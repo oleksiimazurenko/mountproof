@@ -1,0 +1,19 @@
+{
+  "name": "cta-button-v3",
+  "target": "CTA button — verify v3 styling is actually deployed before pixel-diffing",
+  "viewports": [{ "w": 1440, "h": 900 }],
+  "mountProof": {
+    "baseline": [],
+    "target": [
+      { "type": "domTag", "selector": "style[data-href='button_v3']" }
+    ]
+  },
+  "steps": [
+    { "type": "navigate", "path": "/" },
+    { "type": "waitForSelector", "selector": "[data-test-id='cta-button']" }
+  ],
+  "capture": {
+    "name": "cta-button",
+    "selector": "[data-test-id='cta-button']"
+  }
+}

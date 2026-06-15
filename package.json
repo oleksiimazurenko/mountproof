@@ -1,0 +1,72 @@
+{
+  "name": "@oleksiimazurenko/mountproof",
+  "version": "0.0.1",
+  "description": "Visual regression that won't lie to you — declarative trajectories with mount-proof verification + multi-metric pixel diff",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": {
+    "mountproof": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit && vitest run"
+  },
+  "keywords": [
+    "visual-regression",
+    "playwright",
+    "screenshot-testing",
+    "mount-proof",
+    "css-migration"
+  ],
+  "author": "Oleksii Mazurenko <newiqa@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oleksiimazurenko/mountproof.git"
+  },
+  "homepage": "https://github.com/oleksiimazurenko/mountproof",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.34.0",
+    "ssim.js": "^3.5.0"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "playwright": "^1.49.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

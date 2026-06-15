@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Button — target (STALE: served v2 by mistake)</title>
+  <!--
+    This is the "stale build" scenario. The v3 migration was supposedly
+    deployed to this URL, but the server is actually serving the OLD v2
+    bundle (cached, fallback, build skipped, etc.).
+
+    Notice: NO `<style data-href="button_v3">` marker — the mount-proof
+    target will fail to find it, mountproof exits 5 BEFORE running the
+    pixel diff that would otherwise say "PASS" (because both sides are
+    identical v2 buttons).
+
+    Without mount proof you'd get a confident green PASS — and ship a
+    regression you never even tested.
+  -->
+  <style>
+    body { margin: 0; padding: 80px; font: 16px/1.5 system-ui, sans-serif; background: #f5f6f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .btn-v2 {
+      padding: 12px 24px;
+      background: #2563eb;
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      font: 600 14px/1 system-ui, sans-serif;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <button class="btn-v2" data-test-id="cta-button">Continue</button>
+</body>
+</html>
