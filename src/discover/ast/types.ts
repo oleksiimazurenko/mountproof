@@ -44,6 +44,8 @@ export interface ComponentDef {
   /** This is the file's `export default`. */
   isDefault: boolean
   kind: ComponentKind
+  /** Public names this is re-exported under, when aliased (`export { Foo as Bar }`). */
+  exportedAs?: string[]
 }
 
 /** A `<Child .../>` element used inside some component's render output. */

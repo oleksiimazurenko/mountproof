@@ -119,6 +119,19 @@ describe('discoverComponent — direct', () => {
     })
   })
 
+  it('reports navigation-error when navigation throws', async () => {
+    const home = parseFile('app/page.tsx', `export default function HomePage(){ return <main/> }`)
+    const graph = buildGraph(project([home], [route('/', 'app/page.tsx', 'HomePage')]))
+    const page = new FakePage({
+      onGoto: () => {
+        throw new Error('ECONNREFUSED')
+      },
+    })
+    const r = await discoverComponent(page, graph, 'app/page.tsx:HomePage', { baseUrl: BASE })
+    expect(r.status).toBe('unreachable')
+    expect(r.reason).toBe('navigation-error')
+  })
+
   it('marks no-route-renders-component when nothing renders it', () => {
     const page = new FakePage()
     const orphan = parseFile('Lonely.tsx', `export default function Lonely(){ return <div/> }`)
@@ -226,6 +239,16 @@ describe('discoverComponent — auth', () => {
     expect(r.status).toBe('reached')
     expect(r.strategy).toBe('auth+direct')
     expect(page.fills).toContainEqual(['input[type="email"]', 'a@b.c'])
+  })
+
+  it('reports auth-required when login fails to clear the wall', async () => {
+    const graph = authGraph()
+    const id = 'components/Dashboard.tsx:Dashboard'
+    const page = new FakePage({ onGoto: () => `${BASE}/login` }) // never clears, even after login
+    const auth = formLoginAdapter({ loginUrlPattern: /\/login/, email: 'a@b.c', password: 'pw' })
+    const r = await discoverComponent(page, graph, id, { baseUrl: BASE, auth })
+    expect(r.status).toBe('unreachable')
+    expect(r.reason).toBe('auth-required')
   })
 
   it('marks auth-required when a login wall has no adapter', async () => {

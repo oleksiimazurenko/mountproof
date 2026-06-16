@@ -86,7 +86,7 @@ export async function attemptRoute(
     finalUrl = (await page.goto(url)).finalUrl
   } catch (err) {
     return {
-      result: null,
+      result: { status: 'unreachable', reason: 'navigation-error' },
       log: { route, strategyTried: 'direct', outcome: 'failed', detail: String(err) },
     }
   }
@@ -100,8 +100,15 @@ export async function attemptRoute(
       finalUrl = (await page.goto(url)).finalUrl
     } catch (err) {
       return {
-        result: null,
+        result: { status: 'unreachable', reason: 'navigation-error' },
         log: { route, strategyTried: 'direct-after-auth', outcome: 'failed', detail: String(err) },
+      }
+    }
+    // Re-check the login wall: if auth silently failed we're still gated.
+    if (opts.auth.isLoginUrl(finalUrl)) {
+      return {
+        result: { status: 'unreachable', reason: 'auth-required' },
+        log: { route, strategyTried: 'direct-after-auth', outcome: 'failed', detail: 'still on login wall after auth' },
       }
     }
   } else if (!opts.auth && pageLooksLikeLogin(finalUrl)) {

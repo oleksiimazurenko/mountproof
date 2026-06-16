@@ -18,7 +18,7 @@ export interface DiscoveryMetadata {
   sourceComponent: string
   /** Strategy that reached the component. */
   strategy: DiscoveryStrategy
-  /** How many routes were attempted before success. */
+  /** Number of route attempts made, including the one that succeeded. */
   attempts: number
   /** Selector the component was matched by. */
   matchedSelector?: string

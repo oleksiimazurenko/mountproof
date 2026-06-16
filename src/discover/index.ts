@@ -131,6 +131,7 @@ export async function runDiscovery(opts: RunDiscoveryOptions): Promise<RunDiscov
     trajectoriesDir,
     sourceHashes,
     generatedAt: opts.generatedAt,
+    partial: opts.selective,
   })
 
   return { summary, results, plan }

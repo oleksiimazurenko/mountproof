@@ -20,7 +20,7 @@ function isComponentName(name: string | null): name is string {
 }
 
 /** Derive a component name for an anonymous default export from the filename. */
-function deriveDefaultName(file: string): string {
+export function deriveDefaultName(file: string): string {
   const base = basename(file).replace(/\.[^.]+$/, '')
   const pascal = base
     .split(/[^a-zA-Z0-9]+/)
@@ -143,7 +143,11 @@ export function extractComponents(
             isNode(spec.exported) && typeof spec.exported.name === 'string'
               ? spec.exported.name
               : null
-          if (exportedName === 'default') defs[idx].isDefault = true
+          if (exportedName === 'default') {
+            defs[idx].isDefault = true
+          } else if (exportedName && exportedName !== defs[idx].name) {
+            ;(defs[idx].exportedAs ??= []).push(exportedName)
+          }
         }
       }
       continue

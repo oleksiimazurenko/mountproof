@@ -10,6 +10,7 @@
  * routes (`checkout-modal`, `checkout-modal-via-cart`).
  */
 
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { kebabCase } from '../browse/selector.js'
@@ -21,6 +22,7 @@ import {
   serializeTrajectory,
 } from './serialize.js'
 import {
+  type UnreachableEntry,
   type UnreachableReport,
   buildUnreachableReport,
   renderUnreachableMarkdown,
@@ -92,6 +94,41 @@ export interface EmitOptions extends SerializeOptions {
   writeLog?: boolean
   /** Per-component source hashes to stamp for drift detection (Phase E). */
   sourceHashes?: Record<string, string>
+  /**
+   * This run only covers a subset of components (selective re-discovery). The
+   * unreachable report is then MERGED with the existing one instead of being
+   * overwritten, so components not re-evaluated this run aren't dropped from it.
+   */
+  partial?: boolean
+}
+
+/**
+ * Merge a freshly-computed (partial) unreachable report into the one already on
+ * disk: keep prior entries except those whose component was re-evaluated this run
+ * (in `evaluated`), then add the current entries. Current data wins on overlap.
+ */
+function mergeUnreachable(
+  trajectoriesDir: string,
+  current: UnreachableReport,
+  evaluated: Set<string>,
+): UnreachableReport {
+  const path = join(trajectoriesDir, '_unreachable.json')
+  let prior: UnreachableEntry[] = []
+  if (existsSync(path)) {
+    try {
+      prior = (JSON.parse(readFileSync(path, 'utf8')) as UnreachableReport).components ?? []
+    } catch {
+      prior = []
+    }
+  }
+  const byComponent = new Map<string, UnreachableEntry>()
+  for (const e of prior) {
+    if (!evaluated.has(e.component)) byComponent.set(e.component, e)
+  }
+  for (const e of current.components) byComponent.set(e.component, e)
+
+  const components = [...byComponent.values()].sort((a, b) => a.component.localeCompare(b.component))
+  return { generatedAt: current.generatedAt, count: components.length, components }
 }
 
 export interface EmitSummary {
@@ -131,12 +168,18 @@ export function emitDiscovery(results: DiscoveryResult[], opts: EmitOptions): Em
     summary.trajectories.push({ name, path, outcome })
   }
 
-  // Unreachable report (JSON + Markdown), alongside the trajectories.
+  // Unreachable report (JSON + Markdown), alongside the trajectories. In a
+  // partial (selective) run, merge with the existing report so components not
+  // re-evaluated this run stay listed.
+  if (opts.partial) {
+    const evaluated = new Set(results.map((r) => r.componentId))
+    summary.unreachable = mergeUnreachable(trajectoriesDir, summary.unreachable, evaluated)
+  }
   writeJsonFile(join(trajectoriesDir, '_unreachable.json'), summary.unreachable)
   writeTextFile(join(trajectoriesDir, '_unreachable.md'), renderUnreachableMarkdown(summary.unreachable))
 
-  // Attempt log for debugging.
-  if (opts.writeLog ?? true) {
+  // Attempt log for debugging (skipped on an empty no-op run).
+  if ((opts.writeLog ?? true) && results.length > 0) {
     const date = generatedAt.slice(0, 10)
     writeJsonFile(join(opts.outDir, '.mountproof', 'discover-log', `${date}.json`), {
       generatedAt,

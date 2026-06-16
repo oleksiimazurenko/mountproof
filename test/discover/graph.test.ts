@@ -70,6 +70,31 @@ describe('buildGraph', () => {
     const graph = buildGraph(project([f]))
     expect(graph.edges).toHaveLength(0)
   })
+
+  it('forms edges from an anonymous default-export component', () => {
+    const page = parseFile(
+      'app/page.tsx',
+      `import Child from '../components/Child'\nexport default () => <main><Child/></main>`,
+    )
+    const child = parseFile('components/Child.tsx', `export default function Child(){ return <div/> }`)
+    const graph = buildGraph(project([page, child]))
+    // anonymous default is named after the file → "Page"
+    expect(graph.nodes.has('app/page.tsx:Page')).toBe(true)
+    expect(hasEdge(graph.edges, 'app/page.tsx:Page', 'components/Child.tsx:Child')).toBe(true)
+  })
+
+  it('resolves an aliased named re-export (export { Foo as Bar })', () => {
+    const lib = parseFile(
+      'lib/Foo.tsx',
+      `function Foo(){ return <div/> }\nexport { Foo as Bar }`,
+    )
+    const page = parseFile(
+      'app/page.tsx',
+      `import { Bar } from '../lib/Foo'\nexport default function HomePage(){ return <Bar/> }`,
+    )
+    const graph = buildGraph(project([lib, page]))
+    expect(hasEdge(graph.edges, 'app/page.tsx:HomePage', 'lib/Foo.tsx:Foo')).toBe(true)
+  })
 })
 
 describe('findRoutesRendering', () => {

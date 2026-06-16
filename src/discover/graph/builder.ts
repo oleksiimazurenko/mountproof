@@ -111,7 +111,9 @@ export function buildGraph(project: ProjectParse): ComponentGraph {
         const def =
           want === '\0default'
             ? (targetFile.componentDefs.find((d) => d.isDefault) ?? null)
-            : (targetFile.componentDefs.find((d) => d.name === want) ?? null)
+            : (targetFile.componentDefs.find(
+                (d) => d.name === want || d.exportedAs?.includes(want),
+              ) ?? null)
         if (!def) continue
         toId = componentId(def.file, def.name)
       } else {

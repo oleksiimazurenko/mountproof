@@ -155,6 +155,21 @@ describe('emitDiscovery', () => {
     expect(summary.unreachable.count).toBe(1)
   })
 
+  it('merges the unreachable report on a partial (selective) re-run', () => {
+    // Full run: HomePage reached, Ghost unreachable.
+    emitDiscovery(
+      [reached('app/page.tsx:HomePage'), unreachable('c/Ghost.tsx:Ghost', 'no-route-renders-component')],
+      { outDir: dir, generatedAt: AT },
+    )
+    // Partial run re-evaluating only HomePage must NOT drop Ghost from the report.
+    emitDiscovery([reached('app/page.tsx:HomePage')], { outDir: dir, generatedAt: AT, partial: true })
+
+    const report = JSON.parse(
+      readFileSync(join(dir, 'trajectories', '_unreachable.json'), 'utf8'),
+    ) as { components: Array<{ component: string }> }
+    expect(report.components.map((c) => c.component)).toContain('c/Ghost.tsx:Ghost')
+  })
+
   it('is idempotent across identical re-runs', () => {
     const results = [reached('a.tsx:X', '/')]
     emitDiscovery(results, { outDir: dir, generatedAt: AT })

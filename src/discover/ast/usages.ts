@@ -11,6 +11,7 @@
  * the AST doesn't provide).
  */
 
+import { deriveDefaultName } from './components.js'
 import type { ComponentUsage, ConditionalKind } from './types.js'
 import { type AnyNode, isNode, jsxName } from './traverse.js'
 
@@ -115,7 +116,10 @@ function visit(
 }
 
 /** Component-bearing node types whose bodies we scan for usages. */
-function componentBodies(program: AnyNode): Array<{ name: string | null; body: unknown }> {
+function componentBodies(
+  program: AnyNode,
+  file: string,
+): Array<{ name: string | null; body: unknown }> {
   const result: Array<{ name: string | null; body: unknown }> = []
 
   const consider = (name: string | null, fnOrClass: unknown) => {
@@ -140,7 +144,12 @@ function componentBodies(program: AnyNode): Array<{ name: string | null; body: u
       fromDecl(stmt.declaration)
     } else if (stmt.type === 'ExportDefaultDeclaration' && isNode(stmt.declaration)) {
       const decl = stmt.declaration
-      if (decl.type !== 'Identifier') consider(isNode(decl.id) ? String(decl.id.name) : null, decl)
+      if (decl.type === 'Identifier') continue
+      // Named default (`export default function Foo`) keeps its name; anonymous
+      // defaults are named after the file — matching extractComponents, so that
+      // usage `parent` lines up with the component def and edges actually form.
+      const named = isNode(decl.id) && typeof decl.id.name === 'string' ? decl.id.name : null
+      consider(named ?? deriveDefaultName(file), decl)
     } else {
       fromDecl(stmt)
     }
@@ -151,11 +160,12 @@ function componentBodies(program: AnyNode): Array<{ name: string | null; body: u
 
 export function extractUsages(
   program: AnyNode,
+  file: string,
   importedLocals: Set<string>,
   lineAt: (offset: number) => number,
 ): ComponentUsage[] {
   const out: ComponentUsage[] = []
-  for (const { name, body } of componentBodies(program)) {
+  for (const { name, body } of componentBodies(program, file)) {
     visit(body, 'unconditional', name, importedLocals, lineAt, out)
   }
   return out

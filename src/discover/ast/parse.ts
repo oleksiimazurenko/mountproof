@@ -75,7 +75,7 @@ export function parseFile(file: string, code: string): ParsedFile {
   for (const rec of imports) for (const b of rec.bindings) importedLocals.add(b.local)
 
   const componentDefs = extractComponents(program, file, lineAt)
-  const componentUsages = extractUsages(program, importedLocals, lineAt)
+  const componentUsages = extractUsages(program, file, importedLocals, lineAt)
 
   const parseErrors = result.errors.map((e) => e.message)
 
