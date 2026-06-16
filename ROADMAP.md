@@ -170,9 +170,13 @@ Each subdirectory is a small focused module (~200-400 lines). The directory layo
 - Diff masks (`maskSelector`: regions to exclude from diff — useful for timestamps, randomized avatars).
 - Lazy capture: only screenshot if mount proof passes — saves work on broken targets.
 
-## Module 2 — discover (to build)
+## Module 2 — discover (Phases A–E implemented)
 
-This is the bigger half. Five phases, each independently shippable.
+This is the bigger half. Five phases, each independently shippable. All five are
+now implemented under `src/discover/{ast,graph,browse,emit,drift}` and wired into
+the CLI (`mountproof discover` / `drift`). The static-analysis and discovery
+logic are unit-tested; the live Playwright crawl path is not yet validated
+against a real running app. The phase write-ups below are the original design.
 
 ### Phase A — AST parsing (`src/discover/ast/`)
 
@@ -541,26 +545,27 @@ export default defineConfig({
 - `--format github-actions` CI output mode
 - Documentation site (just the README expanded)
 
-### v0.2 — discover Phase A+B (static analysis)
-- AST parser dispatcher (oxc for JS/TS, vue/svelte/astro compilers)
-- Framework detection
-- File walker
-- Component graph builder + annotator
-- Public API: `findRoutesRendering(componentId)` and friends
-- Tests with fixture projects (small Next.js, small Vue project) checked into `examples/`
+### v0.2 — discover Phase A+B (static analysis) ✅ implemented
+- ✅ AST parser dispatcher (oxc for JS/TS/JSX/TSX; vue/svelte/astro deferred)
+- ✅ Framework detection
+- ✅ File walker (fast-glob + .gitignore respect)
+- ✅ Component graph builder + annotator
+- ✅ Public API: `findRoutesRendering(componentId)` and friends
+- ✅ Tests with a fixture Next.js App Router project (`test/fixtures/next-app-tiny/`)
 
-### v0.3 — discover Phase C+D (browser-driven discovery + emit)
-- Discovery state machine (direct → auth → trigger)
-- Auth flow adapter with built-in support for plain forms + plugin hook for OAuth/Firebase
-- Trigger detection from graph
-- Selector synthesis (Playwright-codegen-style priority list)
-- Per-component mount-proof suggestion
-- Emit trajectories + unreachable report
+### v0.3 — discover Phase C+D (browser-driven discovery + emit) ✅ implemented
+- ✅ Discovery state machine (direct → auth → trigger), against an abstract `DiscoveryPage`
+- ✅ Auth flow adapter: built-in email/password form + `AuthAdapter` plugin interface
+- ✅ Trigger detection from graph (override > edge > name heuristic)
+- ✅ Selector synthesis (test-id-first priority list)
+- ✅ Per-component mount-proof suggestion
+- ✅ Emit trajectories + unreachable report (JSON + Markdown), idempotent writes
+- ⏳ Live Playwright crawl not yet validated against a real running app
 
-### v0.4 — discover Phase E (drift detection)
-- Source hashing
-- Cached graph with selective re-discovery
-- `mountproof drift` subcommand
+### v0.4 — discover Phase E (drift detection) ✅ implemented
+- ✅ Source hashing (component source closure: own file + transitive imports)
+- ✅ Selective re-discovery (`--selective`)
+- ✅ `mountproof drift` + `mountproof discover` subcommands wired into the CLI
 
 ### v0.5 — Configuration + plugins
 - `mountproof.config.ts` loader

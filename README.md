@@ -8,7 +8,12 @@ Most visual-regression tools answer one question: "do these two screenshots look
 
 ## Status
 
-Early. PoC publish. Core engine + 7 proof types + Playwright capture + 3-metric diff + HTML report. API may still move.
+Early, pre-publish. Two modules:
+
+- **runner** — executes trajectories, verifies mount proof, diffs (7 proof types + Playwright capture + 3-metric diff + HTML report). Validated end-to-end.
+- **discover** — reads your code (AST), maps every component to the routes/interactions that render it, and crawls a browser to auto-author trajectories (Phases A–E complete: parse → graph → crawl → emit → drift). The static-analysis and discovery logic are unit-tested; the live browser crawl path hasn't been exercised against a real app yet.
+
+API may still move.
 
 ## Install
 
@@ -104,6 +109,33 @@ See `examples/button-versioning/` for a complete runnable demo (two static HTML 
 
 Asymmetric is the common case — `baseline: []` (the old code obviously doesn't have a v3 marker) and `target: [...]`. The CLI accepts the JSON as-is; if you have legacy Promova-style `assertInlineStyle: ["X"]`, it's auto-translated to `mountProof.target: [{ type: 'domTag', selector: "style[data-href='X']" }]`.
 
+## Discover — coverage without hand-writing trajectories
+
+Writing a trajectory per component is the other reason visual regression rots: coverage equals discipline, and new components ship untested by default. `discover` removes the manual step — it reads your source, figures out how every component is reached in a browser, and writes the trajectories for you.
+
+```bash
+# Crawl a running app and auto-build trajectories/
+npx mountproof discover ./my-app --base-url http://localhost:3000
+
+# Only re-discover what changed since last run (cheap in CI)
+npx mountproof discover ./my-app --base-url http://localhost:3000 --selective --include-missing
+
+# Show which stored trajectories went stale vs current source (exit 1 if any)
+npx mountproof drift ./my-app
+```
+
+How it works, in five phases:
+
+1. **AST** — parse the repo (oxc), extract component definitions, `<X/>` usages with their conditional gating, and framework routes (Next.js App Router today).
+2. **Graph** — glue files into a component graph; answer "which routes render component X" with the shortest reachable chain.
+3. **Crawl** — drive a browser through a `direct → auth → trigger` state machine per component; modals get a clicked trigger, login walls get an auth adapter.
+4. **Emit** — write `trajectories/<name>.json` (with a suggested mount proof), a `_unreachable.md/json` report explaining what couldn't be reached and why, and a discover log. Writes are idempotent — re-running doesn't churn git unless something meaningful changed.
+5. **Drift** — hash each component's source closure; on the next run only re-discover components whose source actually changed.
+
+Common flags: `--framework`, `--param "id=1,slug=foo"` (dynamic routes), `--profile <dir>` (pre-authenticated Playwright profile), `--wait-timeout <ms>`, `--out <dir>`.
+
+> The discovery engine is written against an abstract page interface, so its logic is unit-tested without a browser. The live Playwright crawl path is new and not yet validated against a real running app.
+
 ## How it differs from existing tools
 
 | Tool | Catches stale-bundle PASS? | Declarative trajectories? | Multi-metric diff? | Local-only? |
@@ -118,21 +150,31 @@ The "catches stale-bundle PASS" column is the whole reason this exists. Every to
 
 ## Architecture
 
-Six modules, ~1 500 lines TS total:
+One package, two sibling modules sharing the Trajectory contract in `src/types.ts`:
 
 ```
 src/
-├── types.ts            ← public type contract (Trajectory, MountProof, ProofType, Verdict)
-├── mount-proof.ts      ← core: 7 runners, MountProofError, diagnostics — no Playwright import
-├── legacy-translate.ts ← backward-compat for assertInlineStyle → mountProof.target
-├── diff.ts             ← pixelmatch + ΔE76 + SSIM, with WRONG_FRAME aspect-ratio gate
-├── capture.ts          ← Playwright capture (viewports, skeleton-wait, frozen anims)
-├── trajectory.ts       ← step engine + mount-proof verification + capture
-├── report.ts           ← self-contained HTML report with mount-proof badges
-└── cli.ts              ← commander wiring — trajectory, compare, diff, report, validate
+├── types.ts              ← public contract (Trajectory, MountProof, ProofType, Verdict)
+├── index.ts              ← public API re-exports
+├── cli.ts                ← commander wiring (trajectory, compare, diff, report, validate, discover, drift)
+│
+├── runner/               ← executes trajectories
+│   ├── mount-proof.ts    ← core: 7 runners, MountProofError, diagnostics — no Playwright import
+│   ├── legacy-translate.ts ← assertInlineStyle → mountProof.target
+│   ├── diff.ts           ← pixelmatch + ΔE76 + SSIM, with WRONG_FRAME aspect-ratio gate
+│   ├── capture.ts        ← Playwright capture (viewports, skeleton-wait, frozen anims)
+│   ├── trajectory.ts     ← step engine + mount-proof verification + capture
+│   └── report.ts         ← self-contained HTML report with mount-proof badges
+│
+└── discover/             ← turns code into trajectories
+    ├── ast/              ← parse (oxc), components, usages, routes, framework detect
+    ├── graph/            ← component graph, findRoutesRendering, cache
+    ├── browse/           ← browser-driven discovery (direct→auth→trigger), against DiscoveryPage
+    ├── emit/             ← serialize trajectories, unreachable report, idempotent writes
+    └── drift/            ← source hashing + selective re-discovery
 ```
 
-The mount-proof engine deliberately doesn't import Playwright. It talks through a `PageLike` interface so tests run in pure Vitest (no browser) and the same engine could one day drive Puppeteer / WebDriver / SSR-only HTML checks.
+Both engines deliberately abstract the browser away. The runner's mount-proof core talks through a `PageLike` interface; discovery's executor talks through a `DiscoveryPage`. So tests run in pure Vitest (no browser), and the engines could one day drive Puppeteer / WebDriver / SSR-only checks.
 
 ## API (when you want to embed, not CLI)
 
