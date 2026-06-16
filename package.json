@@ -44,6 +44,8 @@
   "homepage": "https://github.com/oleksiimazurenko/mountproof",
   "dependencies": {
     "commander": "^12.1.0",
+    "fast-glob": "^3.3.3",
+    "oxc-parser": "^0.135.0",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
     "sharp": "^0.34.0",
@@ -59,8 +61,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/picomatch": "^4.0.3",
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",
+    "picomatch": "^4.0.4",
     "playwright": "^1.49.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
