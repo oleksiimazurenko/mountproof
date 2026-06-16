@@ -25,7 +25,20 @@ import { captureFromFile, type CaptureTarget } from './runner/capture.js'
 import { diffPair, formatDiffLine, isWrongFrame, writeDiffReportJson } from './runner/diff.js'
 import { generateReport } from './runner/report.js'
 import { runTrajectoryFromFile } from './runner/trajectory.js'
+import { runDiscovery, runDrift } from './discover/index.js'
+import type { Framework } from './discover/index.js'
 import type { LegacyTrajectory, Trajectory } from './types.js'
+
+/** Parse `id=1,slug=foo` into a record for dynamic route segments. */
+function parseParams(spec?: string): Record<string, string> | undefined {
+  if (!spec) return undefined
+  const out: Record<string, string> = {}
+  for (const pair of spec.split(',')) {
+    const [k, ...rest] = pair.split('=')
+    if (k && rest.length) out[k.trim()] = rest.join('=').trim()
+  }
+  return out
+}
 
 const program = new Command()
 program
@@ -196,6 +209,85 @@ program
       process.exit(2)
     }
     console.log(`OK: trajectory "${traj.name}" — ${traj.steps.length} step(s), capture "${traj.capture.name}"`)
+  })
+
+// ─── discover ──────────────────────────────────────────────────────────────
+
+program
+  .command('discover <appDir>')
+  .description('Crawl a running app, auto-build trajectories/ with mount proofs')
+  .requiredOption('--base-url <url>', 'Base URL of the running app (e.g. http://localhost:3000)')
+  .option('--out <dir>', 'Output root for trajectories/ (default: appDir)')
+  .option('--framework <name>', 'Override framework detection (e.g. next-app-router)')
+  .option('--selective', 'Only re-discover components whose source changed since last run')
+  .option('--include-missing', 'With --selective, also discover components with no trajectory yet')
+  .option('--param <pairs>', 'Dynamic route params, e.g. "id=1,slug=foo"')
+  .option('--wait-timeout <ms>', 'Per-selector wait budget in ms', '8000')
+  .option('--profile <dir>', 'Persistent Playwright profile dir (pre-authenticated)')
+  .action(async (appDir: string, opts: {
+    baseUrl: string
+    out?: string
+    framework?: string
+    selective?: boolean
+    includeMissing?: boolean
+    param?: string
+    waitTimeout: string
+    profile?: string
+  }) => {
+    console.log(`==> Discovering components in ${path.resolve(appDir)} against ${opts.baseUrl}…`)
+    const { summary, plan } = await runDiscovery({
+      appDir: path.resolve(appDir),
+      baseUrl: opts.baseUrl,
+      outDir: opts.out ? path.resolve(opts.out) : undefined,
+      framework: opts.framework as Framework | undefined,
+      selective: opts.selective,
+      includeMissing: opts.includeMissing,
+      paramValues: parseParams(opts.param),
+      waitTimeoutMs: parseInt(opts.waitTimeout, 10),
+      profileDir: opts.profile,
+    })
+
+    if (plan) {
+      console.log(`  selective: re-discovered ${plan.rediscover.length}, skipped ${plan.skipped} unchanged, removed ${plan.deleteOrphans.length} orphans`)
+    }
+    console.log(`  trajectories: ${summary.created} created, ${summary.updated} updated, ${summary.unchanged} unchanged`)
+    console.log(`  unreachable: ${summary.unreachable.count} (see trajectories/_unreachable.md)`)
+    const outRoot = opts.out ? path.resolve(opts.out) : path.resolve(appDir)
+    console.log(`\n  Output: ${path.join(outRoot, 'trajectories')}`)
+  })
+
+// ─── drift ─────────────────────────────────────────────────────────────────
+
+program
+  .command('drift <appDir>')
+  .description('Show which trajectories are stale/orphaned vs current source (exit 1 if any)')
+  .option('--out <dir>', 'Output root containing trajectories/ (default: appDir)')
+  .option('--framework <name>', 'Override framework detection')
+  .option('--include-missing', 'Also report components with no trajectory as needing discovery')
+  .action(async (appDir: string, opts: { out?: string; framework?: string; includeMissing?: boolean }) => {
+    const { comparison, plan } = await runDrift({
+      appDir: path.resolve(appDir),
+      outDir: opts.out ? path.resolve(opts.out) : undefined,
+      framework: opts.framework as Framework | undefined,
+      includeMissing: opts.includeMissing,
+    })
+
+    console.log(`unchanged: ${comparison.unchanged.length}`)
+    console.log(`stale:     ${comparison.stale.length}`)
+    for (const e of comparison.stale) console.log(`  ~ ${e.trajectory} (${e.component})`)
+    console.log(`orphaned:  ${comparison.orphaned.length}`)
+    for (const e of comparison.orphaned) console.log(`  - ${e.trajectory} (${e.component})`)
+    if (opts.includeMissing) {
+      console.log(`missing:   ${comparison.missing.length}`)
+      for (const id of comparison.missing) console.log(`  + ${id}`)
+    }
+
+    const dirty = plan.rediscover.length > 0 || plan.deleteOrphans.length > 0
+    if (dirty) {
+      console.log(`\nRun \`mountproof discover ${appDir} --base-url <url> --selective${opts.includeMissing ? ' --include-missing' : ''}\` to update.`)
+      process.exit(1)
+    }
+    console.log('\nUp to date — no drift.')
   })
 
 // ─── helpers ───────────────────────────────────────────────────────────────

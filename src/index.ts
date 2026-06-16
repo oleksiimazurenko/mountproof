@@ -62,3 +62,29 @@ export type {
   TrajectoryRunReport,
   ReportOptions,
 } from './runner/index.js'
+
+// ─── Discover module ────────────────────────────────────────────────────────
+// Static analysis + browser-driven discovery that auto-authors trajectories.
+// Curated surface; the full per-phase API lives under `src/discover/`.
+
+export {
+  runDiscovery,
+  runDrift,
+  parseProject,
+  buildGraph,
+  findRoutesRendering,
+  emitDiscovery,
+  compareDrift,
+  planRediscovery,
+} from './discover/index.js'
+
+export type {
+  RunDiscoveryOptions,
+  RunDiscoveryResult,
+  RunDriftOptions,
+  RunDriftResult,
+  ProjectParse,
+  ComponentGraph,
+  DiscoveryResult,
+  DriftComparison,
+} from './discover/index.js'
