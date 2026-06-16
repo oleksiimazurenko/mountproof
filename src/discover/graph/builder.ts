@@ -26,7 +26,7 @@ export function componentId(file: string, name: string): ComponentId {
 }
 
 /** Resolve a relative import specifier from `fromFile` to a known file path, or null. */
-function resolveModule(fromFile: string, specifier: string, known: Set<string>): string | null {
+export function resolveModule(fromFile: string, specifier: string, known: Set<string>): string | null {
   if (!specifier.startsWith('.')) return null // bare package / alias — not resolvable here
   const base = normalizePosix(joinPosix(dirname(fromFile), specifier))
 

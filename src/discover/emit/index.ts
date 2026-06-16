@@ -90,6 +90,8 @@ export interface EmitOptions extends SerializeOptions {
   trajectoriesDir?: string
   /** Write the .mountproof/discover-log attempt trace (default true). */
   writeLog?: boolean
+  /** Per-component source hashes to stamp for drift detection (Phase E). */
+  sourceHashes?: Record<string, string>
 }
 
 export interface EmitSummary {
@@ -118,7 +120,11 @@ export function emitDiscovery(results: DiscoveryResult[], opts: EmitOptions): Em
 
   for (const r of reached) {
     const name = names.get(r) as string
-    const traj: EmittedTrajectory = serializeTrajectory(r, { generatedAt, name })
+    const traj: EmittedTrajectory = serializeTrajectory(r, {
+      generatedAt,
+      name,
+      sourceHash: opts.sourceHashes?.[r.componentId],
+    })
     const path = join(trajectoriesDir, `${name}.json`)
     const outcome = writeTrajectoryFile(path, traj)
     summary[outcome]++

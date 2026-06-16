@@ -36,6 +36,8 @@ export interface SerializeOptions {
   generatedAt?: string
   /** Override the trajectory name (else derived from the component name). */
   name?: string
+  /** Source hash for drift detection (Phase E). */
+  sourceHash?: string
 }
 
 /** Component name from a `file:name` id. */
@@ -71,6 +73,7 @@ export function serializeTrajectory(
       strategy: result.strategy as DiscoveryStrategy,
       attempts: result.attemptLog.length,
       matchedSelector: result.matchedSelector,
+      sourceHash: opts.sourceHash,
     },
   }
 }
