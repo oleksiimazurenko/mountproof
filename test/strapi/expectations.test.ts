@@ -4,6 +4,7 @@ import {
   entryToTrajectory,
   extractLeaves,
   leavesToProofs,
+  parseSchema,
 } from '../../src/strapi/index.js'
 
 const ENTRY = {
@@ -61,6 +62,46 @@ describe('extractLeaves', () => {
   it('honors extra skipKeys', () => {
     const leaves = extractLeaves(ENTRY, { skipKeys: ['bio'] })
     expect(leaves).not.toContain('Writer and editor')
+  })
+
+  it('drops ISO date/datetime values (e.g. publish_at) — value filter (a)', () => {
+    const leaves = extractLeaves({ when: '2022-11-04T08:45:00.000Z', label: 'Visible Label' })
+    expect(leaves).toEqual(['Visible Label'])
+  })
+
+  it('schema-aware: keeps content fields, drops slug/date/enum/boolean — (b)', () => {
+    const schema = parseSchema({
+      contentTypes: [
+        {
+          uid: 'api::article.article',
+          schema: {
+            kind: 'collectionType',
+            info: { pluralName: 'articles' },
+            attributes: {
+              title: { type: 'string' },
+              slug: { type: 'uid' },
+              publish_at: { type: 'datetime' },
+              ready: { type: 'boolean' },
+              content: { type: 'richtext' },
+            },
+          },
+        },
+      ],
+    } as never)
+    const entry = {
+      id: 1,
+      documentId: 'abc',
+      title: 'Real Article Title',
+      slug: 'real-article-title',
+      publish_at: '2022-11-04T08:45:00.000Z',
+      ready: true,
+      content: '<p>The body content paragraph.</p>',
+    }
+    const leaves = extractLeaves(entry, { schema, pluralApiId: 'articles' })
+    expect(leaves).toContain('Real Article Title')
+    expect(leaves).toContain('The body content paragraph.')
+    expect(leaves).not.toContain('real-article-title') // slug (uid) excluded
+    expect(leaves.some((l) => l.includes('2022-11-04'))).toBe(false) // datetime excluded
   })
 })
 

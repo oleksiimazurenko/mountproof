@@ -11,6 +11,8 @@
  */
 
 import type { ProofType, Trajectory } from '../types.js'
+import { extractableTopLevelKeys, findByPluralApiId } from './schema.js'
+import type { StrapiSchema } from './types.js'
 
 /** Keys that never render as user-facing text, regardless of context. */
 const ALWAYS_SKIP = new Set([
@@ -46,7 +48,8 @@ function isLeafString(value: unknown): value is string {
     t.length >= MIN_STRING_LEN &&
     !/^#?[0-9a-f]{6,}$/i.test(t) && // hex id / color
     !/^https?:\/\//.test(t) && // url
-    !/^[\d.,\s]+$/.test(t) // pure number
+    !/^[\d.,\s]+$/.test(t) && // pure number
+    !/^\d{4}-\d{2}-\d{2}([T ]|$)/.test(t) // ISO date / datetime (publish_at etc.)
   )
 }
 
@@ -68,12 +71,34 @@ function stripHtml(s: string): string {
 export interface ExtractOptions {
   /** Extra keys to skip beyond the built-in internals. */
   skipKeys?: string[]
+  /** Schema + content-type id → restrict TOP-LEVEL extraction to content fields. */
+  schema?: StrapiSchema
+  /** Plural api id of the entry's content type (with `schema`). */
+  pluralApiId?: string
+}
+
+/** Unwrap a v4 `{id, attributes:{...}}` envelope so top-level field names are reachable. */
+function unwrapFields(entry: unknown): Record<string, unknown> {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return {}
+  const e = entry as Record<string, unknown>
+  if (e.attributes && typeof e.attributes === 'object' && !Array.isArray(e.attributes)) {
+    return { ...e, ...(e.attributes as Record<string, unknown>) }
+  }
+  return e
 }
 
 /** Recursively collect normalized, deduped leaf strings that should appear on the page. */
 export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string[] {
   const extraSkip = opts.skipKeys ? new Set(opts.skipKeys) : null
   const out = new Set<string>()
+
+  // Schema-aware: only extract from content-bearing top-level fields, so slug,
+  // dates, enums and other non-visible scalars don't become false-positive proofs.
+  let topKeep: Set<string> | null = null
+  if (opts.schema && opts.pluralApiId) {
+    const ct = findByPluralApiId(opts.schema, opts.pluralApiId)
+    if (ct) topKeep = extractableTopLevelKeys(ct)
+  }
 
   const walk = (node: unknown): void => {
     if (node == null) return
@@ -100,7 +125,17 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
     }
   }
 
-  walk(entry)
+  if (topKeep) {
+    // Gate the top level by schema; deeper levels use the heuristic walk.
+    const fields = unwrapFields(entry)
+    for (const [k, v] of Object.entries(fields)) {
+      if (ALWAYS_SKIP.has(k) || extraSkip?.has(k)) continue
+      if (!topKeep.has(k)) continue
+      walk(v)
+    }
+  } else {
+    walk(entry)
+  }
   return [...out]
 }
 

@@ -127,3 +127,26 @@ export function findByPluralApiId(
 ): StrapiContentType | undefined {
   return schema.contentTypes.find((ct) => ct.pluralApiId === pluralApiId)
 }
+
+/** Scalar attribute types that render as user-facing text (vs uid/date/enum/bool/number). */
+const CONTENT_SCALAR_TYPES = new Set<StrapiAttribute['type']>([
+  'string',
+  'text',
+  'richtext',
+  'blocks',
+  'email',
+])
+
+/**
+ * Top-level attribute names worth extracting expectations from: visible content
+ * scalars + everything populatable (relations/components/media) + dynamic zones.
+ * Excludes uid (slug), dates, enumerations, booleans, numbers, json — none of
+ * which render as stable visible text, so asserting them produces false fails.
+ */
+export function extractableTopLevelKeys(ct: StrapiContentType): Set<string> {
+  const buckets = bucketAttributes(ct.attributes)
+  const content = Object.entries(ct.attributes)
+    .filter(([, attr]) => CONTENT_SCALAR_TYPES.has(attr.type))
+    .map(([name]) => name)
+  return new Set([...content, ...buckets.populatable, ...buckets.dynamicZones])
+}

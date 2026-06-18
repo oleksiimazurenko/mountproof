@@ -117,11 +117,15 @@ export async function runStrapiAudit(opts: RunStrapiAuditOptions): Promise<RunSt
       // Leaf-set parity is shape-agnostic: extractLeaves recurses through v4's
       // `attributes` envelope and v5's flat shape alike, so the two leaf sets are
       // directly comparable. Missing-on-target = a content regression.
-      const baselineLeaves = new Set(extractLeaves(bRaw))
-      const targetLeaves = new Set(extractLeaves(tRaw))
+      const extractOpts = { schema: opts.schema, pluralApiId: target.pluralApiId }
+      const baselineLeaves = new Set(extractLeaves(bRaw, extractOpts))
+      const targetLeaves = new Set(extractLeaves(tRaw, extractOpts))
       const missingOnTarget = [...baselineLeaves].filter((l) => !targetLeaves.has(l))
 
-      const trajectory = entryToTrajectory(target.route, tRaw, opts)
+      const trajectory = entryToTrajectory(target.route, tRaw, {
+        ...opts,
+        pluralApiId: target.pluralApiId,
+      })
       trajectories.push(trajectory)
 
       results.push({
