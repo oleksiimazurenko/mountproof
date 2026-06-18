@@ -23,6 +23,7 @@ import type {
   CaptureConfig,
   LegacyTrajectory,
   ProofContext,
+  ProofType,
   Step,
   Trajectory,
   Viewport,
@@ -122,8 +123,18 @@ export async function runTrajectory(
           }
         }
 
+        // ─── Settle for hydration ────────────────────────────────────────
+        // Client-side error boundaries (useEffect/ref crashes) mount AFTER
+        // hydration, so proofs must wait past `load`, or they false-green.
+        await settleForHydration(page, trajectory.hydrationMarker)
+
         // ─── Mount proof gate ────────────────────────────────────────────
-        const proofs = trajectory.mountProof?.[opts.side] ?? []
+        // The noErrorBoundary preset is applied to every side by default (it's a
+        // universal invariant); opt out per-trajectory with `allowErrorBoundary`.
+        const explicitProofs = trajectory.mountProof?.[opts.side] ?? []
+        const proofs: ProofType[] = trajectory.allowErrorBoundary
+          ? explicitProofs
+          : [{ type: 'noErrorBoundary' }, ...explicitProofs]
         if (proofs.length > 0) {
           try {
             await verifyMountProof(opts.side, proofs, page as unknown as PageLike, proofCtx)
@@ -175,6 +186,20 @@ export async function runTrajectory(
     log,
     ...(mountProofError ? { mountProofError } : {}),
   }
+}
+
+/**
+ * Wait past `load` so post-hydration client error boundaries (useEffect / ref
+ * crashes) have a chance to mount before proofs run. networkidle + a short fixed
+ * settle, plus an optional explicit hydration marker. All waits are best-effort
+ * (swallowed on timeout) — they tighten timing, they don't gate the run.
+ */
+async function settleForHydration(page: Page, marker?: string): Promise<void> {
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => undefined)
+  if (marker) {
+    await page.waitForSelector(marker, { state: 'attached', timeout: 5000 }).catch(() => undefined)
+  }
+  await page.waitForTimeout(400)
 }
 
 async function captureScreenshot(

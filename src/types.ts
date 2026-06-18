@@ -42,6 +42,15 @@ export type ProofType =
    * and `/undefined`,`/null` path fragments — the classic v4→v5 media-shape bug.
    */
   | { type: 'noBrokenImages'; within?: string }
+  /**
+   * No error boundary mounted: the page shows none of the error-boundary `phrases`
+   * and none of the framework `overlaySelectors` (defaults cover Next.js). A
+   * legitimate 404 ("page not found") is treated as an EXPECTED state and passes —
+   * it isn't a crash. Auto-applied to every trajectory unless opted out via
+   * {@link Trajectory.allowErrorBoundary}; runs against the hydrated DOM so it
+   * catches client-side crashes that only surface after hydration.
+   */
+  | { type: 'noErrorBoundary'; phrases?: string[]; overlaySelectors?: string[] }
 
 /**
  * Mount proof for a trajectory. Both sides are optional and independent:
@@ -100,6 +109,18 @@ export interface Trajectory {
   context?: string
   /** Mount proof — the answer to "did the right code actually load?". */
   mountProof?: MountProof
+  /**
+   * Opt out of the default `noErrorBoundary` check (auto-applied to every
+   * trajectory). Set true only when an error-boundary-like UI is the expected
+   * render. Default false → the check runs.
+   */
+  allowErrorBoundary?: boolean
+  /**
+   * Optional selector to wait for as the "hydration done" signal before proofs
+   * run, in addition to the networkidle settle. Use when a page hydrates a known
+   * marker (e.g. `[data-hydrated]`).
+   */
+  hydrationMarker?: string
   viewports?: Viewport[]
   steps: Step[]
   capture: CaptureConfig

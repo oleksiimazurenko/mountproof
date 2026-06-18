@@ -329,3 +329,42 @@ describe('negative & health proofs', () => {
     expect(err.diagnostics.closestMatches[0].matches).toContain('<img src="/undefined">')
   })
 })
+
+// ─── noErrorBoundary preset ──────────────────────────────────────────────────
+
+describe('noErrorBoundary proof', () => {
+  it('passes on a clean page', async () => {
+    const page = makePage({ html: '<main>All good here</main>', dom: {} })
+    await expect(
+      verifyMountProof('target', [{ type: 'noErrorBoundary' }], page, emptyCtx()),
+    ).resolves.toBeUndefined()
+  })
+
+  it('fails when a default error phrase is present', async () => {
+    const page = makePage({ html: '<main>Something went wrong</main>' })
+    await expect(
+      verifyMountProof('target', [{ type: 'noErrorBoundary' }], page, emptyCtx()),
+    ).rejects.toThrow(MountProofError)
+  })
+
+  it('fails when a framework error overlay is mounted', async () => {
+    const page = makePage({ html: '<main>ok</main>', dom: { '[data-nextjs-dialog]': {} } })
+    await expect(
+      verifyMountProof('target', [{ type: 'noErrorBoundary' }], page, emptyCtx()),
+    ).rejects.toThrow(MountProofError)
+  })
+
+  it('passes on a legitimate 404 (expected, not a crash)', async () => {
+    const page = makePage({ html: '<main>Page not found</main>' })
+    await expect(
+      verifyMountProof('target', [{ type: 'noErrorBoundary' }], page, emptyCtx()),
+    ).resolves.toBeUndefined()
+  })
+
+  it('honors custom phrases', async () => {
+    const page = makePage({ html: '<main>kaboom</main>' })
+    await expect(
+      verifyMountProof('target', [{ type: 'noErrorBoundary', phrases: ['kaboom'] }], page, emptyCtx()),
+    ).rejects.toThrow(MountProofError)
+  })
+})

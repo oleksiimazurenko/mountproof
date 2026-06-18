@@ -31,6 +31,19 @@ export interface PageLike {
   $$eval?<R>(selector: string, fn: string | ((els: Element[]) => R)): Promise<R>
 }
 
+// ─── Error-boundary preset defaults ─────────────────────────────────────────
+
+/** Default error-boundary copy to look for (extend per framework via the proof). */
+export const DEFAULT_ERROR_PHRASES = ['Something went wrong', 'experiencing loading issues']
+
+/** Default framework error-overlay selectors (Next.js dev/runtime overlay). */
+export const DEFAULT_ERROR_OVERLAY_SELECTORS = ['[data-nextjs-dialog]', '[data-nextjs-error]']
+
+/** A legitimate 404 is an EXPECTED state, not an error-boundary crash. */
+function looksLikeNotFound(html: string): boolean {
+  return /page not found|сторінк[уи] не знайдено/i.test(html)
+}
+
 // ─── Runners ────────────────────────────────────────────────────────────────
 
 type Runner = (page: PageLike, proof: ProofType, ctx: ProofContext) => Promise<boolean>
@@ -94,6 +107,21 @@ const RUNNERS: Record<ProofType['type'], Runner> = {
   noBrokenImages: async (page, proof) => {
     if (proof.type !== 'noBrokenImages') return false
     return (await collectBrokenImages(page, proof.within)).length === 0
+  },
+
+  noErrorBoundary: async (page, proof) => {
+    if (proof.type !== 'noErrorBoundary') return false
+    const html = await page.content()
+    // A legit 404 is expected, not a crash — don't fail on it.
+    if (looksLikeNotFound(html)) return true
+    const phrases = proof.phrases ?? DEFAULT_ERROR_PHRASES
+    const lower = html.toLowerCase()
+    if (phrases.some((p) => lower.includes(p.toLowerCase()))) return false
+    const overlays = proof.overlaySelectors ?? DEFAULT_ERROR_OVERLAY_SELECTORS
+    for (const sel of overlays) {
+      if ((await page.$(sel)) !== null) return false
+    }
+    return true
   },
 }
 
@@ -176,6 +204,8 @@ function describeProof(proof: ProofType): string {
       return `htmlNotContains ${JSON.stringify(proof.text)} (must NOT be present)`
     case 'noBrokenImages':
       return `noBrokenImages${proof.within ? ` within \`${proof.within}\`` : ''}`
+    case 'noErrorBoundary':
+      return 'noErrorBoundary (no error-boundary phrase/overlay may be present)'
   }
 }
 
