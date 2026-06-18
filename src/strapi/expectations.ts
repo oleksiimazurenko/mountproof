@@ -26,6 +26,7 @@ const ALWAYS_SKIP = new Set([
   'metaRobots', 'canonicalURL', 'metaImage', 'metaSocial', 'metaViewport',
   'structuredData', 'schemaImage', 'preventIndexing', 'isIndexable',
   '__component', 'componentName', 'kind',
+  'seo', // SEO component renders in <head> — routed to head proofs, not body
 ])
 
 /**
@@ -56,7 +57,9 @@ function isLeafString(value: unknown): value is string {
     !/^[\d.,\s]+$/.test(t) && // pure number
     !/^\d{4}-\d{2}-\d{2}([T ]|$)/.test(t) && // ISO date / datetime (publish_at etc.)
     !/^\//.test(t) && // path config (/funnels/courses-onboarding)
-    !/^[a-z0-9]+_[a-z0-9_]+$/i.test(t) // snake_case identifier (concept_1, event keys)
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) && // email address
+    // space-free snake_case / kebab identifier (concept_1, tori-torn, related slugs)
+    !/^[a-z0-9]+([_-][a-z0-9]+)+$/i.test(t)
   )
 }
 
@@ -111,7 +114,7 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
   // Drop head-only fields (e.g. a landing-builder's title) from body extraction.
   if (topKeep && opts.excludeTopLevel) for (const k of opts.excludeTopLevel) topKeep.delete(k)
 
-  const walk = (node: unknown): void => {
+  const walk = (node: unknown, isRoot = false): void => {
     if (node == null) return
     if (Array.isArray(node)) {
       for (const item of node) walk(item)
@@ -120,6 +123,16 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
     if (typeof node === 'object') {
       const obj = node as Record<string, unknown>
       const inMedia = isMediaObject(obj)
+      // A nested RELATION target (a separate entry: has documentId/id, isn't a
+      // component or media) renders elsewhere as a link/card, not as full content
+      // on THIS page. Extract only a label (name/title), not its body — otherwise
+      // an author bio or related-article excerpt becomes a false-positive proof.
+      if (!isRoot && !inMedia && !('__component' in obj) && ('documentId' in obj || 'id' in obj)) {
+        for (const labelKey of ['title', 'name', 'heading', 'label']) {
+          if (typeof obj[labelKey] === 'string') walk(obj[labelKey])
+        }
+        return
+      }
       // Component / DZ-section: if we know its schema, filter to content fields
       // so section CONFIG (colors, enum variants, payment-provider keys, paths)
       // doesn't leak in as proofs — the same content-only rule as the top level.
@@ -154,7 +167,7 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
       walk(v)
     }
   } else {
-    walk(entry)
+    walk(entry, true)
   }
   return [...out]
 }
@@ -229,7 +242,7 @@ export function entryToTrajectory(
   })
   const bodyProofs = leavesToProofs(bodyLeaves, opts)
 
-  const headProofs = hasDynamicZone ? leavesToHeadProofs(headFieldValues(entry), opts) : []
+  const headProofs = leavesToHeadProofs(headFieldValues(entry, hasDynamicZone), opts)
 
   const proofs = [...bodyProofs, ...headProofs]
   return {
@@ -241,12 +254,23 @@ export function entryToTrajectory(
   }
 }
 
-/** Head-only field values (the title of a landing-builder lives in <head>). */
-function headFieldValues(entry: unknown): string[] {
+/**
+ * Head-only field values: a landing-builder's title (when `includeTitle`) plus
+ * SEO meta (metaTitle/metaDescription) — all rendered in <head>, so they're
+ * asserted via htmlContains, not body text.
+ */
+function headFieldValues(entry: unknown, includeTitle: boolean): string[] {
   const fields = unwrapFields(entry)
   const out: string[] = []
-  if (typeof fields.title === 'string') out.push(stripHtml(fields.title))
-  return out.filter((s) => s.length >= MIN_STRING_LEN)
+  if (includeTitle && typeof fields.title === 'string') out.push(stripHtml(fields.title))
+  const seo = fields.seo
+  if (seo && typeof seo === 'object' && !Array.isArray(seo)) {
+    for (const k of ['metaTitle', 'metaDescription']) {
+      const v = (seo as Record<string, unknown>)[k]
+      if (typeof v === 'string') out.push(stripHtml(v))
+    }
+  }
+  return [...new Set(out.filter((s) => s.length >= MIN_STRING_LEN))]
 }
 
 function routeToName(route: string): string {

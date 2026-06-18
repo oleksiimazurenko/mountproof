@@ -134,7 +134,7 @@ const CONTENT_SCALAR_TYPES = new Set<StrapiAttribute['type']>([
   'text',
   'richtext',
   'blocks',
-  'email',
+  // 'email' excluded — addresses aren't visible page content.
 ])
 
 /**

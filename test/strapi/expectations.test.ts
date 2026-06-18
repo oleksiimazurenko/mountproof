@@ -39,7 +39,8 @@ describe('extractLeaves', () => {
   it('collects user-facing strings across nested components and arrays', () => {
     const leaves = extractLeaves(ENTRY)
     expect(leaves).toContain('Dating Slang Explained')
-    expect(leaves).toContain('Learn modern dating slang terms')
+    // 'Learn modern dating slang terms' is seo.metaDescription → routed to head, not body
+    expect(leaves).not.toContain('Learn modern dating slang terms')
     expect(leaves).toContain('Ugo Ezenduka')
     expect(leaves).toContain('What is rizz?')
     expect(leaves).toContain('Start learning')
@@ -104,9 +105,47 @@ describe('extractLeaves', () => {
     expect(leaves).toEqual(['Visible Label'])
   })
 
-  it('drops path + snake_case identifier config via value filter', () => {
-    const leaves = extractLeaves({ a: '/funnels/courses-onboarding', b: 'concept_1', c: 'Real Visible Text' })
+  it('drops paths, identifiers (snake/kebab), and emails via value filter', () => {
+    const leaves = extractLeaves({
+      a: '/funnels/courses-onboarding',
+      b: 'concept_1',
+      c: 'tori-torn',
+      d: 'viktoriia.khutorna@gen.tech',
+      e: 'Real Visible Text',
+    })
     expect(leaves).toEqual(['Real Visible Text'])
+  })
+
+  it('extracts only a label from a nested relation target, not its body', () => {
+    const entry = {
+      title: 'Post Title',
+      content: 'Post body text',
+      author: {
+        documentId: 'a1',
+        id: 5,
+        name: 'Jane Doe',
+        bio: 'A long author biography that should not be asserted on the post page',
+      },
+    }
+    const leaves = extractLeaves(entry)
+    expect(leaves).toContain('Jane Doe') // relation label kept
+    expect(leaves.some((l) => l.includes('author biography'))).toBe(false) // bio excluded
+    expect(leaves).toContain('Post body text') // own content kept
+  })
+
+  it('routes SEO meta to head, not body (entryToTrajectory)', () => {
+    const entry = {
+      title: 'Article H1',
+      content: 'Body paragraph here',
+      seo: { metaTitle: 'SEO Meta Title', metaDescription: 'SEO meta description text' },
+    }
+    const traj = entryToTrajectory('/blog/x', entry)
+    const proofs = traj.mountProof!.target!
+    // SEO meta → htmlContains (head); never body, and the field name never leaks
+    expect(proofs.some((p) => p.type === 'htmlContains' && p.text === 'SEO Meta Title')).toBe(true)
+    expect(proofs.some((p) => p.type === 'pageTextContains' && p.text.includes('SEO Meta'))).toBe(false)
+    // real body content still present
+    expect(proofs.some((p) => p.type === 'pageTextContains' && p.text === 'Body paragraph here')).toBe(true)
   })
 
   it('schema-aware: keeps content fields, drops slug/date/enum/boolean — (b)', () => {
