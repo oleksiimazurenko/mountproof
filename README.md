@@ -136,6 +136,15 @@ Common flags: `--framework`, `--param "id=1,slug=foo"` (dynamic routes), `--prof
 
 > The discovery engine is written against an abstract page interface, so its logic is unit-tested without a browser. The live Playwright crawl path is new and not yet validated against a real running app.
 
+## Testing a CMS migration (Strapi)
+
+A standout use case: verifying a Strapi v4→v5 (or any CMS) migration didn't
+silently drop content. `@oleksiimazurenko/mountproof/strapi` reads the CMS,
+derives what each page should display, and asserts it actually rendered — catching
+the case where a section quietly disappears but the page still looks fine. See
+[docs/strapi-migration.md](docs/strapi-migration.md) for the full pipeline
+(`discoverTargets → runStrapiAudit → mountproof run`) and a real-world finding.
+
 ## How it differs from existing tools
 
 | Tool | Catches stale-bundle PASS? | Declarative trajectories? | Multi-metric diff? | Local-only? |
