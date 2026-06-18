@@ -188,18 +188,34 @@ export async function runTrajectory(
   }
 }
 
+const NETWORKIDLE_TIMEOUT_MS = 3000
+const HYDRATION_MARKER_TIMEOUT_MS = 3000
+const HYDRATION_SETTLE_MS = 800
+/** Next.js App Router inserts this after client hydration — a soft "hydrated" signal. */
+const DEFAULT_HYDRATION_MARKER = 'next-route-announcer'
+
 /**
  * Wait past `load` so post-hydration client error boundaries (useEffect / ref
- * crashes) have a chance to mount before proofs run. networkidle + a short fixed
- * settle, plus an optional explicit hydration marker. All waits are best-effort
- * (swallowed on timeout) — they tighten timing, they don't gate the run.
+ * crashes) mount before proofs run — otherwise the negative proofs false-green.
+ *
+ * networkidle is treated as best-effort only: apps with analytics / websockets /
+ * polling (Amplitude, Faro, LiveKit) may NEVER reach it, so we cap it short and
+ * never block on it. The real settle is a short hydration-marker wait plus a
+ * fixed delay. All waits are swallowed on timeout — they tighten timing, they
+ * don't gate the run.
  */
 async function settleForHydration(page: Page, marker?: string): Promise<void> {
-  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => undefined)
-  if (marker) {
-    await page.waitForSelector(marker, { state: 'attached', timeout: 5000 }).catch(() => undefined)
-  }
-  await page.waitForTimeout(400)
+  await page.waitForLoadState('domcontentloaded').catch(() => undefined)
+  await page
+    .waitForLoadState('networkidle', { timeout: NETWORKIDLE_TIMEOUT_MS })
+    .catch(() => undefined)
+  await page
+    .waitForSelector(marker ?? DEFAULT_HYDRATION_MARKER, {
+      state: 'attached',
+      timeout: HYDRATION_MARKER_TIMEOUT_MS,
+    })
+    .catch(() => undefined)
+  await page.waitForTimeout(HYDRATION_SETTLE_MS)
 }
 
 async function captureScreenshot(
