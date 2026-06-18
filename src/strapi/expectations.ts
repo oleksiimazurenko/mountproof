@@ -27,6 +27,7 @@ const ALWAYS_SKIP = new Set([
   'structuredData', 'schemaImage', 'preventIndexing', 'isIndexable',
   '__component', 'componentName', 'kind',
   'seo', // SEO component renders in <head> — routed to head proofs, not body
+  'color', 'colour', 'tint', 'theme', // visual config (often a nested color component)
 ])
 
 /**
@@ -36,6 +37,13 @@ const ALWAYS_SKIP = new Set([
  * them context-sensitively rather than blindly by key name.
  */
 const MEDIA_ONLY_SKIP = new Set(['name', 'alternativeText', 'caption'])
+
+/**
+ * Config-ish field NAMES skipped anywhere: color components (sectionColor,
+ * firstBlockColor…) whose `.name` holds 'Gray'/'Purple', and error/fallback UI
+ * text (failButtonText 'try again') that only shows on failure, not as content.
+ */
+const CONFIG_KEY_RE = /colou?r|^fail|^error/i
 
 /** A Strapi media object: has a `url` plus at least one media-internal marker. */
 function isMediaObject(node: Record<string, unknown>): boolean {
@@ -143,6 +151,7 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
       }
       for (const [k, v] of Object.entries(obj)) {
         if (ALWAYS_SKIP.has(k)) continue
+        if (CONFIG_KEY_RE.test(k)) continue
         if (extraSkip?.has(k)) continue
         // Media-internal keys are skipped only inside an actual media object, so
         // author.name / product.name survive.
@@ -242,7 +251,7 @@ export function entryToTrajectory(
   })
   const bodyProofs = leavesToProofs(bodyLeaves, opts)
 
-  const headProofs = leavesToHeadProofs(headFieldValues(entry, hasDynamicZone), opts)
+  const headProofs = leavesToHeadProofs(headFieldValues(entry), opts)
 
   const proofs = [...bodyProofs, ...headProofs]
   return {
@@ -255,22 +264,20 @@ export function entryToTrajectory(
 }
 
 /**
- * Head-only field values: a landing-builder's title (when `includeTitle`) plus
- * SEO meta (metaTitle/metaDescription) — all rendered in <head>, so they're
- * asserted via htmlContains, not body text.
+ * Head-only field values: the SEO meta title, which is what actually renders in
+ * <title>. We deliberately do NOT use the entry's own `title` — for landing
+ * builders it's an internal label (e.g. "who we are") that differs from the
+ * rendered title — nor metaDescription (entity-encoded in the meta tag, fragile
+ * to match). Asserted via htmlContains against the page <head>.
  */
-function headFieldValues(entry: unknown, includeTitle: boolean): string[] {
+function headFieldValues(entry: unknown): string[] {
   const fields = unwrapFields(entry)
-  const out: string[] = []
-  if (includeTitle && typeof fields.title === 'string') out.push(stripHtml(fields.title))
   const seo = fields.seo
-  if (seo && typeof seo === 'object' && !Array.isArray(seo)) {
-    for (const k of ['metaTitle', 'metaDescription']) {
-      const v = (seo as Record<string, unknown>)[k]
-      if (typeof v === 'string') out.push(stripHtml(v))
-    }
-  }
-  return [...new Set(out.filter((s) => s.length >= MIN_STRING_LEN))]
+  if (!seo || typeof seo !== 'object' || Array.isArray(seo)) return []
+  const metaTitle = (seo as Record<string, unknown>).metaTitle
+  if (typeof metaTitle !== 'string') return []
+  const v = stripHtml(metaTitle)
+  return v.length >= MIN_STRING_LEN ? [v] : []
 }
 
 function routeToName(route: string): string {

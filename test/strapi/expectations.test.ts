@@ -116,6 +116,18 @@ describe('extractLeaves', () => {
     expect(leaves).toEqual(['Real Visible Text'])
   })
 
+  it('skips color-component and error-button config by key name', () => {
+    const entry = {
+      heading: 'Real Heading',
+      sectionColor: { name: 'Gray', hex: '#888' },
+      failButtonText: 'try again',
+    }
+    const leaves = extractLeaves(entry)
+    expect(leaves).toContain('Real Heading')
+    expect(leaves).not.toContain('Gray')
+    expect(leaves).not.toContain('try again')
+  })
+
   it('extracts only a label from a nested relation target, not its body', () => {
     const entry = {
       title: 'Post Title',
@@ -227,17 +239,21 @@ describe('per-type title routing', () => {
     ],
   } as never)
 
-  it('routes a landing-builder title to head, section content to body', () => {
+  it('landing-builder: seo.metaTitle→head, section content→body, internal title dropped', () => {
     const traj = entryToTrajectory(
       '/page/bf',
-      { title: 'Builder SEO Title', sections: [{ __component: 'x.hero', heading: 'Visible Hero Heading' }] },
+      {
+        title: 'internal builder name',
+        seo: { metaTitle: 'BF Rendered Title' },
+        sections: [{ __component: 'x.hero', heading: 'Visible Hero Heading' }],
+      },
       { schema, pluralApiId: 'builders' },
     )
     const proofs = traj.mountProof!.target!
-    expect(proofs.some((p) => p.type === 'htmlContains' && p.text === 'Builder SEO Title')).toBe(true)
+    expect(proofs.some((p) => p.type === 'htmlContains' && p.text === 'BF Rendered Title')).toBe(true)
     expect(proofs.some((p) => p.type === 'pageTextContains' && p.text === 'Visible Hero Heading')).toBe(true)
-    // title is NOT a body proof
-    expect(proofs.some((p) => p.type === 'pageTextContains' && p.text.includes('Builder SEO'))).toBe(false)
+    // the internal title is asserted nowhere (not body, not head)
+    expect(proofs.some((p) => p.text.includes('internal builder name'))).toBe(false)
   })
 
   it('keeps an article title as a visible body proof (no DZ)', () => {
