@@ -109,6 +109,12 @@ describe('buildPopulatePlan + toPopulateQuery', () => {
     expect(excluded.mode === 'shallow' && excluded.populate).not.toContain('cover')
   })
 
+  it('deep-populates named attributes with * (bounded), others stay true', () => {
+    const q = toPopulateQuery(buildPopulatePlan(article, { deepAttributes: ['author'] }), 5)
+    expect(q).toContain('populate%5Bauthor%5D=*')
+    expect(q).toContain('populate%5Bseo%5D=true')
+  })
+
   it('deep mode is version-keyed (v4 deep / v5 *)', () => {
     expect(toPopulateQuery(buildPopulatePlan(article, { deep: true }), 4)).toBe('populate=deep')
     expect(toPopulateQuery(buildPopulatePlan(article, { deep: true }), 5)).toBe('populate=*')

@@ -19,8 +19,10 @@ export type PopulatePlan =
   | { mode: 'deep' }
   | {
       mode: 'shallow'
-      /** Relation/component/media attribute names to populate (one level). */
+      /** Relation/component/media attribute names to populate (one level, `true`). */
       populate: string[]
+      /** Subset of `populate` to deep-populate (`*`) — bounded to that branch. */
+      deep: string[]
       /** Dynamic-zone attribute names to populate via `*` (only when opted in). */
       dynamicZones: string[]
       /** Scalar fields to restrict the response to (e.g. `['slug']` for sitemaps). */
@@ -28,10 +30,18 @@ export type PopulatePlan =
     }
 
 export interface PopulatePlanOptions {
-  /** Use deep populate (version-keyed). DANGEROUS: can hang the server. Default false. */
+  /** Use GLOBAL deep populate (version-keyed). DANGEROUS: can hang the server. Default false. */
   deep?: boolean
   /** Also populate dynamic zones (off by default — the classic hang). */
   includeDynamicZones?: boolean
+  /**
+   * Attribute names to populate deeply (`*`) instead of one level (`true`). Use
+   * for content-rich, nested attributes (e.g. `sections` with nested relations)
+   * so expectation read-back sees the nested fields — otherwise a one-level
+   * populate misses them and proofs false-green. Bounded to the named branch, so
+   * it's safe unlike a global `populate=*`.
+   */
+  deepAttributes?: string[]
   /** Restrict populate to these attribute names. */
   only?: string[]
   /** Drop these attribute names from populate. */
@@ -52,9 +62,11 @@ export function buildPopulatePlan(
   if (opts.only) populate = populate.filter((n) => opts.only!.includes(n))
   if (opts.exclude) populate = populate.filter((n) => !opts.exclude!.includes(n))
 
+  const deepSet = new Set(opts.deepAttributes ?? [])
   return {
     mode: 'shallow',
     populate,
+    deep: populate.filter((n) => deepSet.has(n)),
     dynamicZones: opts.includeDynamicZones ? buckets.dynamicZones : [],
     fields: opts.scalarFields,
   }
@@ -73,7 +85,8 @@ export function toPopulateQuery(plan: PopulatePlan, version: StrapiVersion): str
     return qs.toString()
   }
 
-  for (const name of plan.populate) qs.set(`populate[${name}]`, 'true')
+  const deep = new Set(plan.deep)
+  for (const name of plan.populate) qs.set(`populate[${name}]`, deep.has(name) ? '*' : 'true')
   // DZ scoped to one field stays bounded (vs a global `*` that hangs).
   for (const name of plan.dynamicZones) qs.set(`populate[${name}]`, '*')
   if (plan.fields) plan.fields.forEach((f, i) => qs.set(`fields[${i}]`, f))
