@@ -169,12 +169,14 @@ program
   .requiredOption('--out <dir>', 'Output directory')
   .option('--baseline-profile <dir>', 'Persistent Playwright profile for baseline')
   .option('--target-profile <dir>', 'Persistent Playwright profile for target')
+  .option('--no-warmup', 'Skip priming each route before proofs (dev servers compile on first hit)')
   .action(async (trajectoriesDir: string, opts: {
     baseline: string
     target: string
     out: string
     baselineProfile?: string
     targetProfile?: string
+    warmup: boolean
   }) => {
     const runDir = path.resolve(opts.out)
     const baselineDir = path.join(runDir, 'baseline')
@@ -191,6 +193,14 @@ program
     if (files.length === 0) {
       console.error(`No trajectory files in ${dir}`)
       process.exit(1)
+    }
+
+    // Warm up each route on both sides first. Dev servers (Next/Turbopack)
+    // compile a route on its FIRST hit and serve a shell meanwhile — proofs then
+    // see a half-rendered page and false-fail. A throwaway request primes it.
+    if (opts.warmup) {
+      console.log('==> Warming up routes (priming dev-server compile)…')
+      await warmupRoutes(dir, files, [opts.baseline, opts.target])
     }
 
     console.log(`==> Running ${files.length} trajectories on baseline + target…`)
@@ -402,6 +412,35 @@ async function diffAllPairs(baselineDir: string, targetDir: string, diffDir: str
 
 function isMountProofFailure(reason: unknown): boolean {
   return reason instanceof Error && reason.name === 'MountProofError'
+}
+
+/** Prime each trajectory's route on every base URL so dev-server compile finishes before proofs. */
+async function warmupRoutes(dir: string, files: string[], bases: string[]): Promise<void> {
+  const paths = new Set<string>()
+  for (const f of files) {
+    try {
+      const traj = JSON.parse(await readFile(path.join(dir, f), 'utf8')) as {
+        steps?: Array<{ type: string; path?: string }>
+      }
+      const nav = traj.steps?.find((s) => s.type === 'navigate' && s.path)
+      if (nav?.path) paths.add(nav.path)
+    } catch {
+      // Unreadable trajectory — skip; the run will report it.
+    }
+  }
+  const jobs: Promise<unknown>[] = []
+  for (const p of paths) {
+    for (const base of bases) {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 90_000)
+      jobs.push(
+        fetch(base.replace(/\/$/, '') + p, { signal: ctrl.signal })
+          .catch(() => undefined)
+          .finally(() => clearTimeout(timer)),
+      )
+    }
+  }
+  await Promise.all(jobs)
 }
 
 /** Read the run summary and return the worst pair verdict (for CI exit codes). */
