@@ -44,6 +44,11 @@ function looksLikeNotFound(html: string): boolean {
   return /page not found|сторінк[уи] не знайдено/i.test(html)
 }
 
+/** Lowercase + collapse whitespace, so visible-text matching is layout-insensitive. */
+export function normalizeText(s: string): string {
+  return s.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
 // ─── Runners ────────────────────────────────────────────────────────────────
 
 type Runner = (page: PageLike, proof: ProofType, ctx: ProofContext) => Promise<boolean>
@@ -65,6 +70,12 @@ const RUNNERS: Record<ProofType['type'], Runner> = {
     if (handle === null) return false
     const text = await page.textContent(proof.selector)
     return (text ?? '').includes(proof.text)
+  },
+
+  pageTextContains: async (page, proof) => {
+    if (proof.type !== 'pageTextContains') return false
+    const visible = await page.evaluate<string>('document.body ? document.body.innerText : ""')
+    return normalizeText(visible ?? '').includes(normalizeText(proof.text))
   },
 
   network: async (_page, proof, ctx) => {
@@ -190,6 +201,8 @@ function describeProof(proof: ProofType): string {
       return `${proof.type} \`${proof.selector}\``
     case 'domTextContains':
       return `domTextContains \`${proof.selector}\` includes ${JSON.stringify(proof.text)}`
+    case 'pageTextContains':
+      return `pageTextContains ${JSON.stringify(proof.text)}`
     case 'network':
       return `network ${proof.urlPattern} (status ${proof.status ?? 200})`
     case 'console':

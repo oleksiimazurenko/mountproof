@@ -20,6 +20,12 @@ export type ProofType =
   | { type: 'domTag'; selector: string }
   /** Selector resolves AND its textContent includes `text`. */
   | { type: 'domTextContains'; selector: string; text: string }
+  /**
+   * The page's visible text (`document.body.innerText`, whitespace-normalized)
+   * includes `text`. Selector-free presence check — use when you know a value
+   * should render somewhere on the page but not where. Runs on the hydrated DOM.
+   */
+  | { type: 'pageTextContains'; text: string }
   /** Some recorded HTTP response URL matches `urlPattern` (regex source) with the given status (defaults to 200). */
   | { type: 'network'; urlPattern: string; status?: number }
   /** Some recorded console line includes `text`. */

@@ -38,3 +38,12 @@ export {
   flattenEntry,
   inferVersionFromEntry,
 } from './version.js'
+
+export {
+  entryToTrajectory,
+  extractLeaves,
+  leavesToProofs,
+  type ExpectationTrajectoryOptions,
+  type ExtractOptions,
+  type ProofGenOptions,
+} from './expectations.js'

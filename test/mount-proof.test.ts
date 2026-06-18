@@ -17,6 +17,8 @@ type FakePageOpts = {
   url?: string
   /** outerHTML snippets the broken-images probe should report. */
   brokenImages?: string[]
+  /** document.body.innerText the page returns. */
+  pageText?: string
 }
 
 function makePage(opts: FakePageOpts = {}): PageLike {
@@ -32,6 +34,9 @@ function makePage(opts: FakePageOpts = {}): PageLike {
       // The broken-images runner builds a querySelectorAll+getAttribute script.
       if (script.includes('querySelectorAll') && script.includes('getAttribute')) {
         return (opts.brokenImages ?? []) as R
+      }
+      if (script.includes('innerText')) {
+        return (opts.pageText ?? '') as R
       }
       return evalResults[script] as R
     },
@@ -365,6 +370,24 @@ describe('noErrorBoundary proof', () => {
     const page = makePage({ html: '<main>kaboom</main>' })
     await expect(
       verifyMountProof('target', [{ type: 'noErrorBoundary', phrases: ['kaboom'] }], page, emptyCtx()),
+    ).rejects.toThrow(MountProofError)
+  })
+})
+
+// ─── pageTextContains (visible-text presence) ────────────────────────────────
+
+describe('pageTextContains proof', () => {
+  it('passes when the visible text contains the value (whitespace-insensitive)', async () => {
+    const page = makePage({ pageText: 'Welcome   to   Promova\nLearn English' })
+    await expect(
+      verifyMountProof('target', [{ type: 'pageTextContains', text: 'Welcome to Promova' }], page, emptyCtx()),
+    ).resolves.toBeUndefined()
+  })
+
+  it('fails when the value is missing from the visible text', async () => {
+    const page = makePage({ pageText: 'Some other content' })
+    await expect(
+      verifyMountProof('target', [{ type: 'pageTextContains', text: 'Expected headline' }], page, emptyCtx()),
     ).rejects.toThrow(MountProofError)
   })
 })
