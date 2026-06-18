@@ -15,6 +15,8 @@ type FakePageOpts = {
   html?: string
   evalResults?: Record<string, unknown>
   url?: string
+  /** outerHTML snippets the broken-images probe should report. */
+  brokenImages?: string[]
 }
 
 function makePage(opts: FakePageOpts = {}): PageLike {
@@ -26,7 +28,13 @@ function makePage(opts: FakePageOpts = {}): PageLike {
     $: async (selector: string) => (selector in dom ? { selector } : null),
     textContent: async (selector: string) => dom[selector]?.textContent ?? null,
     content: async () => html,
-    evaluate: async <R>(script: string) => evalResults[script] as R,
+    evaluate: async <R>(script: string) => {
+      // The broken-images runner builds a querySelectorAll+getAttribute script.
+      if (script.includes('querySelectorAll') && script.includes('getAttribute')) {
+        return (opts.brokenImages ?? []) as R
+      }
+      return evalResults[script] as R
+    },
     url: () => url,
     $$eval: async <R>(selector: string, _fn: unknown) => {
       const matches = Object.keys(dom).filter(s => s === selector || s.startsWith(selector))
@@ -268,5 +276,56 @@ describe('verifyMountProof — unknown proof type', () => {
     // Cast to bypass TS — simulates a typo in user JSON
     const bogus = [{ type: 'domSeIector', selector: '#x' }] as unknown as ProofType[]
     await expect(verifyMountProof('target', bogus, page, emptyCtx())).rejects.toThrow(MountProofError)
+  })
+})
+
+// ─── Negative & health proofs (v4→v5 migration class of bugs) ────────────────
+
+describe('negative & health proofs', () => {
+  it('domAbsent passes when the selector is NOT present', async () => {
+    const page = makePage({ dom: {} })
+    await expect(
+      verifyMountProof('target', [{ type: 'domAbsent', selector: '.error-boundary' }], page, emptyCtx()),
+    ).resolves.toBeUndefined()
+  })
+
+  it('domAbsent fails when the forbidden element IS present', async () => {
+    const page = makePage({ dom: { '.error-boundary': { outerHTML: '<div class="error-boundary">Something went wrong</div>' } } })
+    await expect(
+      verifyMountProof('target', [{ type: 'domAbsent', selector: '.error-boundary' }], page, emptyCtx()),
+    ).rejects.toThrow(MountProofError)
+  })
+
+  it('htmlNotContains passes when the phrase is absent', async () => {
+    const page = makePage({ html: '<main>All good</main>' })
+    await expect(
+      verifyMountProof('target', [{ type: 'htmlNotContains', text: 'Something went wrong' }], page, emptyCtx()),
+    ).resolves.toBeUndefined()
+  })
+
+  it('htmlNotContains fails when the error phrase leaked into the HTML', async () => {
+    const page = makePage({ html: '<main>Something went wrong</main>' })
+    await expect(
+      verifyMountProof('target', [{ type: 'htmlNotContains', text: 'Something went wrong' }], page, emptyCtx()),
+    ).rejects.toThrow(MountProofError)
+  })
+
+  it('noBrokenImages passes when every img has a usable src', async () => {
+    const page = makePage({ brokenImages: [] })
+    await expect(
+      verifyMountProof('target', [{ type: 'noBrokenImages' }], page, emptyCtx()),
+    ).resolves.toBeUndefined()
+  })
+
+  it('noBrokenImages fails and reports the offending images', async () => {
+    const page = makePage({ brokenImages: ['<img src="/undefined">', '<img src="null">'] })
+    const err = await verifyMountProof(
+      'target',
+      [{ type: 'noBrokenImages', within: '.gallery' }],
+      page,
+      emptyCtx(),
+    ).catch((e) => e as MountProofError)
+    expect(err).toBeInstanceOf(MountProofError)
+    expect(err.diagnostics.closestMatches[0].matches).toContain('<img src="/undefined">')
   })
 })

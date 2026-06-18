@@ -77,6 +77,44 @@ const RUNNERS: Record<ProofType['type'], Runner> = {
     const html = await page.content()
     return html.includes(proof.text)
   },
+
+  domAbsent: async (page, proof) => {
+    if (proof.type !== 'domAbsent') return false
+    // Passes when the selector resolves to NOTHING. Runs on the live page, so a
+    // client-side error boundary that only mounts after hydration is caught.
+    return (await page.$(proof.selector)) === null
+  },
+
+  htmlNotContains: async (page, proof) => {
+    if (proof.type !== 'htmlNotContains') return false
+    const html = await page.content()
+    return !html.includes(proof.text)
+  },
+
+  noBrokenImages: async (page, proof) => {
+    if (proof.type !== 'noBrokenImages') return false
+    return (await collectBrokenImages(page, proof.within)).length === 0
+  },
+}
+
+/** Build the in-page script that lists broken `<img>` elements (outerHTML snippets). */
+function brokenImagesScript(within?: string): string {
+  const sel = JSON.stringify(within ? `${within} img` : 'img')
+  return (
+    `Array.from(document.querySelectorAll(${sel})).filter(function(img){` +
+    `var s=img.getAttribute('src');` +
+    `return s===null||s===''||s==='undefined'||s==='null'||s.indexOf('/undefined')>=0||s.indexOf('/null')>=0;` +
+    `}).map(function(img){return img.outerHTML.slice(0,160)})`
+  )
+}
+
+/** Collect broken-image snippets; best-effort (empty list if the page can't evaluate). */
+async function collectBrokenImages(page: PageLike, within?: string): Promise<string[]> {
+  try {
+    return (await page.evaluate<string[]>(brokenImagesScript(within))) ?? []
+  } catch {
+    return []
+  }
 }
 
 // ─── Error & diagnostics ────────────────────────────────────────────────────
@@ -132,6 +170,12 @@ function describeProof(proof: ProofType): string {
       return `eval \`${proof.script}\``
     case 'htmlContains':
       return `htmlContains ${JSON.stringify(proof.text)}`
+    case 'domAbsent':
+      return `domAbsent \`${proof.selector}\` (must NOT be present)`
+    case 'htmlNotContains':
+      return `htmlNotContains ${JSON.stringify(proof.text)} (must NOT be present)`
+    case 'noBrokenImages':
+      return `noBrokenImages${proof.within ? ` within \`${proof.within}\`` : ''}`
   }
 }
 
@@ -142,9 +186,17 @@ async function dumpDiagnostics(
 ): Promise<ProofDiagnostics> {
   const closestMatches: ProofDiagnostics['closestMatches'] = []
   for (const proof of failures) {
-    if (proof.type === 'domSelector' || proof.type === 'domTag' || proof.type === 'domTextContains') {
+    if (
+      proof.type === 'domSelector' ||
+      proof.type === 'domTag' ||
+      proof.type === 'domTextContains' ||
+      proof.type === 'domAbsent'
+    ) {
+      // For domAbsent the "matches" are exactly what should NOT be there.
       const matches = await collectClosestSelectorHints(page, proof.selector)
       closestMatches.push({ proof, matches })
+    } else if (proof.type === 'noBrokenImages') {
+      closestMatches.push({ proof, matches: await collectBrokenImages(page, proof.within) })
     }
   }
   return {

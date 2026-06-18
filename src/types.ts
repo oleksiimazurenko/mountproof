@@ -28,6 +28,20 @@ export type ProofType =
   | { type: 'eval'; script: string }
   /** Raw HTML of the page contains the substring `text`. */
   | { type: 'htmlContains'; text: string }
+  /**
+   * Negative proof: the selector resolves to NO node. Use to assert a thing is
+   * absent — e.g. a client-side error boundary did not mount. Runs against the
+   * live (hydrated) DOM, so it catches crashes that only surface after hydration.
+   */
+  | { type: 'domAbsent'; selector: string }
+  /** Negative proof: the page DOM/HTML does NOT contain the substring `text` (e.g. "Something went wrong"). */
+  | { type: 'htmlNotContains'; text: string }
+  /**
+   * No broken images: every `<img>` (optionally scoped to `within`) has a usable
+   * `src`. Fails on missing/empty src or the literal strings `undefined`/`null`
+   * and `/undefined`,`/null` path fragments — the classic v4→v5 media-shape bug.
+   */
+  | { type: 'noBrokenImages'; within?: string }
 
 /**
  * Mount proof for a trajectory. Both sides are optional and independent:
@@ -68,6 +82,12 @@ export interface CaptureConfig {
   name: string
   /** CSS selector to crop to. Defaults to `body` (full page). */
   selector?: string
+  /**
+   * Selectors to neutralize before screenshotting (set `visibility:hidden`) so
+   * dynamic regions — timestamps, "X min ago", randomized avatars — don't create
+   * spurious diffs. Capture-time masking keeps both sides pixel-identical.
+   */
+  mask?: string[]
 }
 
 // ─── Trajectory (top-level) ─────────────────────────────────────────────────

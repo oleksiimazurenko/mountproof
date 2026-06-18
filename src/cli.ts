@@ -16,7 +16,7 @@
  *     Re-generate HTML report from existing `<runDir>/{baseline,target,diff}/`.
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { Command } from 'commander'
@@ -157,6 +157,75 @@ program
     const reportPath = await generateReport({ runDir })
     console.log(`\n  Artifacts: ${runDir}`)
     console.log(`  Report: file://${reportPath}`)
+  })
+
+// ─── run (bulk trajectories) ─────────────────────────────────────────────────
+
+program
+  .command('run <trajectoriesDir>')
+  .description('Execute every trajectory in a directory on baseline + target; verify proofs; diff; one report')
+  .requiredOption('--baseline <url>', 'Baseline base URL')
+  .requiredOption('--target <url>', 'Target base URL')
+  .requiredOption('--out <dir>', 'Output directory')
+  .option('--baseline-profile <dir>', 'Persistent Playwright profile for baseline')
+  .option('--target-profile <dir>', 'Persistent Playwright profile for target')
+  .action(async (trajectoriesDir: string, opts: {
+    baseline: string
+    target: string
+    out: string
+    baselineProfile?: string
+    targetProfile?: string
+  }) => {
+    const runDir = path.resolve(opts.out)
+    const baselineDir = path.join(runDir, 'baseline')
+    const targetDir = path.join(runDir, 'target')
+    const diffDir = path.join(runDir, 'diff')
+    await mkdir(baselineDir, { recursive: true })
+    await mkdir(targetDir, { recursive: true })
+    await mkdir(diffDir, { recursive: true })
+
+    const dir = path.resolve(trajectoriesDir)
+    const files = (await readdir(dir))
+      .filter((f) => f.endsWith('.json') && !f.startsWith('_'))
+      .sort()
+    if (files.length === 0) {
+      console.error(`No trajectory files in ${dir}`)
+      process.exit(1)
+    }
+
+    console.log(`==> Running ${files.length} trajectories on baseline + target…`)
+    let proofFailures = 0
+    for (const f of files) {
+      const tp = path.join(dir, f)
+      console.log(`  • ${f}`)
+      const [b, t] = await Promise.allSettled([
+        runTrajectoryFromFile(tp, { side: 'baseline', base: opts.baseline, outDir: baselineDir, profileDir: opts.baselineProfile }),
+        runTrajectoryFromFile(tp, { side: 'target', base: opts.target, outDir: targetDir, profileDir: opts.targetProfile }),
+      ])
+      if (b.status === 'rejected') {
+        console.error(`    baseline failed: ${b.reason}`)
+        if (isMountProofFailure(b.reason)) proofFailures++
+      }
+      if (t.status === 'rejected') {
+        console.error(`    target failed: ${t.reason}`)
+        if (isMountProofFailure(t.reason)) proofFailures++
+      }
+    }
+
+    console.log('==> Diffing all pairs…')
+    await diffAllPairs(baselineDir, targetDir, diffDir)
+    const reportPath = await generateReport({ runDir })
+    console.log(`\n  Artifacts: ${runDir}`)
+    console.log(`  Report: file://${reportPath}`)
+
+    if (proofFailures > 0) {
+      console.error(`\n${proofFailures} mount-proof failure(s) — stale/broken content detected.`)
+      process.exit(5)
+    }
+    // Reflect worst diff verdict as exit code for CI gating.
+    const worst = await worstVerdict(path.join(runDir, 'summary.json'))
+    if (worst === 'WRONG_FRAME') process.exit(4)
+    if (worst === 'FAIL') process.exit(2)
   })
 
 // ─── diff ──────────────────────────────────────────────────────────────────
@@ -333,6 +402,21 @@ async function diffAllPairs(baselineDir: string, targetDir: string, diffDir: str
 
 function isMountProofFailure(reason: unknown): boolean {
   return reason instanceof Error && reason.name === 'MountProofError'
+}
+
+/** Read the run summary and return the worst pair verdict (for CI exit codes). */
+async function worstVerdict(summaryPath: string): Promise<string | null> {
+  try {
+    const summary = JSON.parse(await readFile(summaryPath, 'utf8')) as {
+      pairs: Array<{ verdict?: string }>
+    }
+    const verdicts = summary.pairs.map((p) => p.verdict).filter(Boolean)
+    if (verdicts.includes('WRONG_FRAME')) return 'WRONG_FRAME'
+    if (verdicts.includes('FAIL')) return 'FAIL'
+    return null
+  } catch {
+    return null
+  }
 }
 
 // Avoid `unused import` for CaptureTarget — it's part of the public API surface

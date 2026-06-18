@@ -187,6 +187,14 @@ async function captureScreenshot(
   logEvent: (e: Omit<TrajectoryEvent, 'ts'>) => void,
 ): Promise<void> {
   const outFile = path.join(outDir, `${capture.name}-${vp.w}.png`)
+  // Capture-time masking: hide dynamic regions so they don't drive spurious
+  // diffs. visibility:hidden keeps layout intact (vs display:none) so the rest
+  // of the page doesn't reflow between sides.
+  if (capture.mask && capture.mask.length > 0) {
+    await page.addStyleTag({
+      content: `${capture.mask.join(', ')} { visibility: hidden !important; }`,
+    })
+  }
   if (capture.selector) {
     const locator = page.locator(capture.selector).first()
     try {
