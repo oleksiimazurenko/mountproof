@@ -57,3 +57,12 @@ export {
   type RunStrapiAuditOptions,
   type RunStrapiAuditResult,
 } from './audit.js'
+
+export {
+  discoverTargets,
+  type DiscoverTargetsOptions,
+  type DiscoverTargetsResult,
+  type RouteMap,
+  type RouteMapCollection,
+  type RouteMapSingle,
+} from './targets.js'
