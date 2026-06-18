@@ -47,6 +47,8 @@ export interface StrapiAttribute {
   /** component/media/relation: many vs one. */
   repeatable?: boolean
   multiple?: boolean
+  /** Custom field widget (e.g. `plugin::color-picker.color`) — a string by storage but config, not content. */
+  customField?: string
 }
 
 export interface StrapiContentType {

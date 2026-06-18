@@ -59,6 +59,41 @@ describe('extractLeaves', () => {
     expect(extractLeaves(ENTRY)).toContain('Ugo Ezenduka')
   })
 
+  it('component-schema-aware: filters section config, keeps section content', () => {
+    const schema = parseSchema({
+      contentTypes: [
+        {
+          uid: 'api::builder.builder',
+          schema: {
+            kind: 'collectionType',
+            info: { pluralName: 'builders' },
+            attributes: { title: { type: 'string' }, sections: { type: 'dynamiczone', components: ['s.price'] } },
+          },
+        },
+      ],
+      components: [
+        {
+          uid: 's.price',
+          schema: {
+            attributes: {
+              heading: { type: 'string' }, // content
+              color: { type: 'enumeration' }, // config
+              tint: { type: 'string', customField: 'plugin::color-picker.color' }, // colorpicker config
+            },
+          },
+        },
+      ],
+    } as never)
+    const entry = {
+      title: 'Builder',
+      sections: [{ __component: 's.price', heading: 'Save Big Today', color: 'Premium', tint: 'BrandBlue' }],
+    }
+    const leaves = extractLeaves(entry, { schema, pluralApiId: 'builders' })
+    expect(leaves).toContain('Save Big Today') // section content kept
+    expect(leaves).not.toContain('Premium') // enumeration config dropped
+    expect(leaves).not.toContain('BrandBlue') // colorpicker (string customField) dropped
+  })
+
   it('honors extra skipKeys', () => {
     const leaves = extractLeaves(ENTRY, { skipKeys: ['bio'] })
     expect(leaves).not.toContain('Writer and editor')
@@ -67,6 +102,11 @@ describe('extractLeaves', () => {
   it('drops ISO date/datetime values (e.g. publish_at) — value filter (a)', () => {
     const leaves = extractLeaves({ when: '2022-11-04T08:45:00.000Z', label: 'Visible Label' })
     expect(leaves).toEqual(['Visible Label'])
+  })
+
+  it('drops path + snake_case identifier config via value filter', () => {
+    const leaves = extractLeaves({ a: '/funnels/courses-onboarding', b: 'concept_1', c: 'Real Visible Text' })
+    expect(leaves).toEqual(['Real Visible Text'])
   })
 
   it('schema-aware: keeps content fields, drops slug/date/enum/boolean — (b)', () => {

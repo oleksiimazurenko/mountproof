@@ -11,7 +11,12 @@
  */
 
 import type { ProofType, Trajectory } from '../types.js'
-import { bucketAttributes, extractableTopLevelKeys, findByPluralApiId } from './schema.js'
+import {
+  bucketAttributes,
+  extractableKeys,
+  extractableTopLevelKeys,
+  findByPluralApiId,
+} from './schema.js'
 import type { StrapiSchema } from './types.js'
 
 /** Keys that never render as user-facing text, regardless of context. */
@@ -49,7 +54,9 @@ function isLeafString(value: unknown): value is string {
     !/^#?[0-9a-f]{6,}$/i.test(t) && // hex id / color
     !/^https?:\/\//.test(t) && // url
     !/^[\d.,\s]+$/.test(t) && // pure number
-    !/^\d{4}-\d{2}-\d{2}([T ]|$)/.test(t) // ISO date / datetime (publish_at etc.)
+    !/^\d{4}-\d{2}-\d{2}([T ]|$)/.test(t) && // ISO date / datetime (publish_at etc.)
+    !/^\//.test(t) && // path config (/funnels/courses-onboarding)
+    !/^[a-z0-9]+_[a-z0-9_]+$/i.test(t) // snake_case identifier (concept_1, event keys)
   )
 }
 
@@ -113,12 +120,21 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
     if (typeof node === 'object') {
       const obj = node as Record<string, unknown>
       const inMedia = isMediaObject(obj)
+      // Component / DZ-section: if we know its schema, filter to content fields
+      // so section CONFIG (colors, enum variants, payment-provider keys, paths)
+      // doesn't leak in as proofs — the same content-only rule as the top level.
+      let compKeep: Set<string> | null = null
+      const comp = obj.__component
+      if (typeof comp === 'string' && opts.schema?.components?.[comp]) {
+        compKeep = extractableKeys(opts.schema.components[comp])
+      }
       for (const [k, v] of Object.entries(obj)) {
         if (ALWAYS_SKIP.has(k)) continue
         if (extraSkip?.has(k)) continue
         // Media-internal keys are skipped only inside an actual media object, so
         // author.name / product.name survive.
         if (inMedia && MEDIA_ONLY_SKIP.has(k)) continue
+        if (compKeep && !compKeep.has(k)) continue
         walk(v)
       }
       return

@@ -143,10 +143,15 @@ const CONTENT_SCALAR_TYPES = new Set<StrapiAttribute['type']>([
  * Excludes uid (slug), dates, enumerations, booleans, numbers, json — none of
  * which render as stable visible text, so asserting them produces false fails.
  */
-export function extractableTopLevelKeys(ct: StrapiContentType): Set<string> {
-  const buckets = bucketAttributes(ct.attributes)
-  const content = Object.entries(ct.attributes)
-    .filter(([, attr]) => CONTENT_SCALAR_TYPES.has(attr.type))
+export function extractableKeys(attributes: Record<string, StrapiAttribute>): Set<string> {
+  const buckets = bucketAttributes(attributes)
+  const content = Object.entries(attributes)
+    // A string-typed custom field (e.g. a colorpicker) is config, not content.
+    .filter(([, attr]) => CONTENT_SCALAR_TYPES.has(attr.type) && !attr.customField)
     .map(([name]) => name)
   return new Set([...content, ...buckets.populatable, ...buckets.dynamicZones])
+}
+
+export function extractableTopLevelKeys(ct: StrapiContentType): Set<string> {
+  return extractableKeys(ct.attributes)
 }
