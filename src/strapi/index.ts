@@ -47,3 +47,12 @@ export {
   type ExtractOptions,
   type ProofGenOptions,
 } from './expectations.js'
+
+export {
+  runStrapiAudit,
+  type AuditResult,
+  type AuditTarget,
+  type ParityResult,
+  type RunStrapiAuditOptions,
+  type RunStrapiAuditResult,
+} from './audit.js'
