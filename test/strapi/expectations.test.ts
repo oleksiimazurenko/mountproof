@@ -17,13 +17,21 @@ const ENTRY = {
     metaDescription: 'Learn modern dating slang terms',
     canonicalURL: 'https://promova.com/blog/dating-slang',
   },
-  // `name` is intentionally a skip-key (media file names), so use `fullName`.
-  author: { fullName: 'Ugo Ezenduka', bio: 'Writer and editor' },
+  // author.name is a real user-facing name — must survive (not a media file name).
+  author: { name: 'Ugo Ezenduka', bio: 'Writer and editor' },
   blocks: [
     { __component: 'blocks.faq', question: 'What is rizz?', answer: 'Charisma, basically.' },
     { __component: 'blocks.cta', label: 'Start learning' },
   ],
-  cover: { url: 'https://cdn.promova.com/x.jpg', alternativeText: 'cover' },
+  // A realistic media object — its name/alternativeText are media-internal.
+  cover: {
+    url: 'https://cdn.promova.com/x.jpg',
+    mime: 'image/jpeg',
+    ext: '.jpg',
+    hash: 'x_abc123',
+    name: 'cover-hero.jpg',
+    alternativeText: 'cover hero alt text',
+  },
 }
 
 describe('extractLeaves', () => {
@@ -41,7 +49,13 @@ describe('extractLeaves', () => {
     expect(leaves).not.toContain('abc') // documentId (and too short)
     expect(leaves.some((l) => l.includes('https://'))).toBe(false) // urls
     expect(leaves.some((l) => l.includes('2026-01-01'))).toBe(false) // createdAt
-    expect(leaves).not.toContain('cover') // alternativeText skip-key
+    // media-internal name/alt skipped ONLY inside the media object
+    expect(leaves).not.toContain('cover hero alt text')
+    expect(leaves.some((l) => l.includes('cover-hero'))).toBe(false)
+  })
+
+  it('keeps a real name field that is NOT inside a media object (schema-aware)', () => {
+    expect(extractLeaves(ENTRY)).toContain('Ugo Ezenduka')
   })
 
   it('honors extra skipKeys', () => {

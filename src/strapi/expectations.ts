@@ -12,15 +12,30 @@
 
 import type { ProofType, Trajectory } from '../types.js'
 
-/** Keys whose values never render as user-facing text (Strapi/SEO/media internals). */
-const SKIP_KEYS = new Set([
+/** Keys that never render as user-facing text, regardless of context. */
+const ALWAYS_SKIP = new Set([
   'id', 'documentId', 'createdAt', 'updatedAt', 'publishedAt', 'locale',
-  'url', 'ext', 'hash', 'mime', 'name', 'previewUrl', 'provider', 'provider_metadata',
-  'alternativeText', 'caption',
+  'url', 'ext', 'hash', 'mime', 'previewUrl', 'provider', 'provider_metadata',
   'metaRobots', 'canonicalURL', 'metaImage', 'metaSocial', 'metaViewport',
   'structuredData', 'schemaImage', 'preventIndexing', 'isIndexable',
   '__component', 'componentName', 'kind',
 ])
+
+/**
+ * Keys skipped ONLY inside a media object. These are media-internal there
+ * (`name` = file name, `alternativeText`/`caption` = asset metadata) but
+ * genuinely user-facing elsewhere (`author.name`, `expert.name`, …) — so we skip
+ * them context-sensitively rather than blindly by key name.
+ */
+const MEDIA_ONLY_SKIP = new Set(['name', 'alternativeText', 'caption'])
+
+/** A Strapi media object: has a `url` plus at least one media-internal marker. */
+function isMediaObject(node: Record<string, unknown>): boolean {
+  return (
+    typeof node.url === 'string' &&
+    ('mime' in node || 'ext' in node || 'hash' in node || 'formats' in node)
+  )
+}
 
 const MIN_STRING_LEN = 4
 
@@ -57,7 +72,7 @@ export interface ExtractOptions {
 
 /** Recursively collect normalized, deduped leaf strings that should appear on the page. */
 export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string[] {
-  const skip = opts.skipKeys ? new Set([...SKIP_KEYS, ...opts.skipKeys]) : SKIP_KEYS
+  const extraSkip = opts.skipKeys ? new Set(opts.skipKeys) : null
   const out = new Set<string>()
 
   const walk = (node: unknown): void => {
@@ -67,8 +82,14 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
       return
     }
     if (typeof node === 'object') {
-      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-        if (skip.has(k)) continue
+      const obj = node as Record<string, unknown>
+      const inMedia = isMediaObject(obj)
+      for (const [k, v] of Object.entries(obj)) {
+        if (ALWAYS_SKIP.has(k)) continue
+        if (extraSkip?.has(k)) continue
+        // Media-internal keys are skipped only inside an actual media object, so
+        // author.name / product.name survive.
+        if (inMedia && MEDIA_ONLY_SKIP.has(k)) continue
         walk(v)
       }
       return
