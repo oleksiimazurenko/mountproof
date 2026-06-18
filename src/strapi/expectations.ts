@@ -11,7 +11,7 @@
  */
 
 import type { ProofType, Trajectory } from '../types.js'
-import { extractableTopLevelKeys, findByPluralApiId } from './schema.js'
+import { bucketAttributes, extractableTopLevelKeys, findByPluralApiId } from './schema.js'
 import type { StrapiSchema } from './types.js'
 
 /** Keys that never render as user-facing text, regardless of context. */
@@ -75,6 +75,8 @@ export interface ExtractOptions {
   schema?: StrapiSchema
   /** Plural api id of the entry's content type (with `schema`). */
   pluralApiId?: string
+  /** Top-level field names to NOT extract into body leaves (e.g. head-only `title`). */
+  excludeTopLevel?: string[]
 }
 
 /** Unwrap a v4 `{id, attributes:{...}}` envelope so top-level field names are reachable. */
@@ -99,6 +101,8 @@ export function extractLeaves(entry: unknown, opts: ExtractOptions = {}): string
     const ct = findByPluralApiId(opts.schema, opts.pluralApiId)
     if (ct) topKeep = extractableTopLevelKeys(ct)
   }
+  // Drop head-only fields (e.g. a landing-builder's title) from body extraction.
+  if (topKeep && opts.excludeTopLevel) for (const k of opts.excludeTopLevel) topKeep.delete(k)
 
   const walk = (node: unknown): void => {
     if (node == null) return
@@ -146,8 +150,12 @@ export interface ProofGenOptions extends ExtractOptions {
   maxProofs?: number
 }
 
-/** Turn extracted leaves into `pageTextContains` proofs (truncated + capped). */
-export function leavesToProofs(leaves: string[], opts: ProofGenOptions = {}): ProofType[] {
+/** Truncate, dedupe, and cap leaves into needles for a given proof type. */
+function leavesToTypedProofs(
+  leaves: string[],
+  make: (text: string) => ProofType,
+  opts: ProofGenOptions,
+): ProofType[] {
   const maxLen = opts.maxNeedleLen ?? 60
   const maxProofs = opts.maxProofs ?? 40
   const seen = new Set<string>()
@@ -157,10 +165,20 @@ export function leavesToProofs(leaves: string[], opts: ProofGenOptions = {}): Pr
     const key = text.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    proofs.push({ type: 'pageTextContains', text })
+    proofs.push(make(text))
     if (proofs.length >= maxProofs) break
   }
   return proofs
+}
+
+/** Turn extracted leaves into `pageTextContains` (visible body) proofs. */
+export function leavesToProofs(leaves: string[], opts: ProofGenOptions = {}): ProofType[] {
+  return leavesToTypedProofs(leaves, (text) => ({ type: 'pageTextContains', text }), opts)
+}
+
+/** Turn leaves into `htmlContains` proofs — for head-only fields (title/meta in <head>). */
+export function leavesToHeadProofs(leaves: string[], opts: ProofGenOptions = {}): ProofType[] {
+  return leavesToTypedProofs(leaves, (text) => ({ type: 'htmlContains', text }), opts)
 }
 
 export interface ExpectationTrajectoryOptions extends ProofGenOptions {
@@ -179,7 +197,25 @@ export function entryToTrajectory(
   opts: ExpectationTrajectoryOptions = {},
 ): Trajectory {
   const name = opts.name ?? routeToName(route)
-  const proofs = leavesToProofs(extractLeaves(entry, opts), opts)
+
+  // Per-type: a content type that has a dynamic zone is a landing-builder style
+  // page — its visible content is in the DZ sections, and its `title` is a
+  // <head>/SEO field, NOT body text. So route such a title to an htmlContains
+  // (head) proof and exclude it from body extraction. Types without a DZ
+  // (articles, authors) keep `title` as a visible body field.
+  const ct =
+    opts.schema && opts.pluralApiId ? findByPluralApiId(opts.schema, opts.pluralApiId) : undefined
+  const hasDynamicZone = ct ? bucketAttributes(ct.attributes).dynamicZones.length > 0 : false
+
+  const bodyLeaves = extractLeaves(entry, {
+    ...opts,
+    excludeTopLevel: hasDynamicZone ? ['title'] : opts.excludeTopLevel,
+  })
+  const bodyProofs = leavesToProofs(bodyLeaves, opts)
+
+  const headProofs = hasDynamicZone ? leavesToHeadProofs(headFieldValues(entry), opts) : []
+
+  const proofs = [...bodyProofs, ...headProofs]
   return {
     name,
     target: route,
@@ -187,6 +223,14 @@ export function entryToTrajectory(
     steps: [{ type: 'navigate', path: route }],
     capture: { name },
   }
+}
+
+/** Head-only field values (the title of a landing-builder lives in <head>). */
+function headFieldValues(entry: unknown): string[] {
+  const fields = unwrapFields(entry)
+  const out: string[] = []
+  if (typeof fields.title === 'string') out.push(stripHtml(fields.title))
+  return out.filter((s) => s.length >= MIN_STRING_LEN)
 }
 
 function routeToName(route: string): string {

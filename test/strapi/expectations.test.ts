@@ -122,6 +122,57 @@ describe('leavesToProofs', () => {
   })
 })
 
+describe('per-type title routing', () => {
+  const schema = parseSchema({
+    contentTypes: [
+      {
+        uid: 'api::builder.builder',
+        schema: {
+          kind: 'collectionType',
+          info: { pluralName: 'builders' },
+          attributes: {
+            title: { type: 'string' },
+            slug: { type: 'uid' },
+            sections: { type: 'dynamiczone', components: ['x.hero'] },
+          },
+        },
+      },
+      {
+        uid: 'api::article.article',
+        schema: {
+          kind: 'collectionType',
+          info: { pluralName: 'articles' },
+          attributes: { title: { type: 'string' }, content: { type: 'richtext' } },
+        },
+      },
+    ],
+  } as never)
+
+  it('routes a landing-builder title to head, section content to body', () => {
+    const traj = entryToTrajectory(
+      '/page/bf',
+      { title: 'Builder SEO Title', sections: [{ __component: 'x.hero', heading: 'Visible Hero Heading' }] },
+      { schema, pluralApiId: 'builders' },
+    )
+    const proofs = traj.mountProof!.target!
+    expect(proofs.some((p) => p.type === 'htmlContains' && p.text === 'Builder SEO Title')).toBe(true)
+    expect(proofs.some((p) => p.type === 'pageTextContains' && p.text === 'Visible Hero Heading')).toBe(true)
+    // title is NOT a body proof
+    expect(proofs.some((p) => p.type === 'pageTextContains' && p.text.includes('Builder SEO'))).toBe(false)
+  })
+
+  it('keeps an article title as a visible body proof (no DZ)', () => {
+    const traj = entryToTrajectory(
+      '/blog/x',
+      { title: 'Article H1 Title', content: 'Body paragraph text' },
+      { schema, pluralApiId: 'articles' },
+    )
+    const proofs = traj.mountProof!.target!
+    expect(proofs.some((p) => p.type === 'pageTextContains' && p.text === 'Article H1 Title')).toBe(true)
+    expect(proofs.some((p) => p.type === 'htmlContains')).toBe(false)
+  })
+})
+
 describe('entryToTrajectory', () => {
   it('builds a full-page trajectory with symmetric proofs from the entry', () => {
     const traj = entryToTrajectory('/blog/dating-slang', ENTRY)

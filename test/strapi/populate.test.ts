@@ -87,9 +87,9 @@ describe('buildPopulatePlan + toPopulateQuery', () => {
     expect(q).not.toContain('blocks')
   })
 
-  it('includes dynamic zones via * only when opted in', () => {
+  it('includes dynamic zones via nested [populate]=* only when opted in', () => {
     const q = toPopulateQuery(buildPopulatePlan(article, { includeDynamicZones: true }), 5)
-    expect(q).toContain('populate%5Bblocks%5D=*')
+    expect(q).toContain('populate%5Bblocks%5D%5Bpopulate%5D=*')
   })
 
   it('never emits populate for a relation the type does not have', () => {
@@ -111,7 +111,7 @@ describe('buildPopulatePlan + toPopulateQuery', () => {
 
   it('deep-populates named attributes with * (bounded), others stay true', () => {
     const q = toPopulateQuery(buildPopulatePlan(article, { deepAttributes: ['author'] }), 5)
-    expect(q).toContain('populate%5Bauthor%5D=*')
+    expect(q).toContain('populate%5Bauthor%5D%5Bpopulate%5D=*')
     expect(q).toContain('populate%5Bseo%5D=true')
   })
 

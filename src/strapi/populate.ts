@@ -86,9 +86,14 @@ export function toPopulateQuery(plan: PopulatePlan, version: StrapiVersion): str
   }
 
   const deep = new Set(plan.deep)
-  for (const name of plan.populate) qs.set(`populate[${name}]`, deep.has(name) ? '*' : 'true')
-  // DZ scoped to one field stays bounded (vs a global `*` that hangs).
-  for (const name of plan.dynamicZones) qs.set(`populate[${name}]`, '*')
+  // Deep populate uses the nested `[populate]=*` form: `populate[x]=*` 500s on
+  // dynamic zones in v5 (with the deep-populate plugin), whereas
+  // `populate[x][populate]=*` returns the component's nested fields and is bounded.
+  for (const name of plan.populate) {
+    if (deep.has(name)) qs.set(`populate[${name}][populate]`, '*')
+    else qs.set(`populate[${name}]`, 'true')
+  }
+  for (const name of plan.dynamicZones) qs.set(`populate[${name}][populate]`, '*')
   if (plan.fields) plan.fields.forEach((f, i) => qs.set(`fields[${i}]`, f))
 
   return qs.toString()

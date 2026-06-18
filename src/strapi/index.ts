@@ -43,6 +43,7 @@ export {
   entryToTrajectory,
   extractLeaves,
   leavesToProofs,
+  leavesToHeadProofs,
   type ExpectationTrajectoryOptions,
   type ExtractOptions,
   type ProofGenOptions,
