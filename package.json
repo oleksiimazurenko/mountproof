@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./strapi": {
+      "types": "./dist/strapi.d.ts",
+      "import": "./dist/strapi.js",
+      "require": "./dist/strapi.cjs"
     }
   },
   "bin": {
